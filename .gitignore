@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+release/
+native/bin/
+native/.build/
+*.log
+.DS_Store
+.env
+.env.*
+# 本地密钥与调试产物一律不进仓库
+settings.local.json
+src/renderer/public/mediapipe/
+src/renderer/public/pdfjs/
+*.tsbuildinfo

@@ -1,0 +1,43 @@
+{
+  "name": "lookask",
+  "productName": "LookAsk",
+  "version": "0.1.0",
+  "description": "看哪问哪：眼动追踪 + Joy-Con 的 AI 阅读副驾",
+  "main": "out/main/index.js",
+  "author": "Leo",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "build:native": "bash native/build.sh",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist": "bash native/build.sh && electron-vite build && electron-builder --mac dmg --arm64",
+    "postinstall": "install-electron && node scripts/fetch-assets.mjs && electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@realeye-io/webcam-eyetracker-light-open": "^1.1.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "@vscode/markdown-it-katex": "^1.1.2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "highlight.js": "^11.12.0",
+    "katex": "^0.18.9",
+    "markdown-it": "^15.0.2",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.0"
+  }
+}
