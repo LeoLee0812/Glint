@@ -57,7 +57,15 @@ export function TopBar(): React.JSX.Element {
           🎯 {calText}
           {g.driftPx ? ` · 漂移${g.driftPx}` : ''}
         </span>
-        {g.headZ && <span className="pill dim-pill" title="眼睛到摄像头的估计距离">↔ {g.headZ}cm</span>}
+        {g.calibrated && g.faceScale && g.calibFaceScale && Math.abs(g.faceScale / g.calibFaceScale - 1) > 0.12 && (
+          <span
+            className="pill warn"
+            title="你离屏幕的距离和校准时差了不少，视线会偏：看着焦点按 −（或 ⌥D）做一次漂移校正"
+            onClick={() => uiStore.patch({ showCalibration: true, calibrationKind: 'drift' })}
+          >
+            ↔ 距离变了 {Math.round((g.faceScale / g.calibFaceScale - 1) * 100)}%
+          </span>
+        )}
         <span className={`pill ${j.L.connected || j.P.connected ? 'ok' : 'off'}`} title={j.L.connected ? '左手柄已连接' : '左手柄没连：按一下它的任意键唤醒'}>
           🕹L {j.L.connected ? '' : '—'}
           <Battery level={j.L.connected ? j.L.battery : -1} />

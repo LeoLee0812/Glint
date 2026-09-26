@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { gaze } from './engine'
 import { useStore } from '../store'
-import { uiStore, setUiMode, settingsStore, clientToScreen, screenToClient, toast, rumble } from '../appState'
+import { uiStore, setUiMode, settingsStore, clientToScreen, screenToClient, toast, rumble, boundsStore, la } from '../appState'
 import { input } from '../input/joycon'
 import type { FitInput } from './ridge'
 
@@ -38,11 +38,9 @@ function pattern(n: 9 | 17): Array<[number, number]> {
   return out
 }
 
-function ptToDeg(px: number, headZ: number | null): number {
-  // 估算：macOS 默认缩放下 1pt ≈ 0.023cm；眼睛到屏幕距离用人脸模型的 Z（厘米），拿不到按 55cm
-  const cm = px * 0.023
-  const dist = headZ && headZ > 20 && headZ < 120 ? headZ : 55
-  return (Math.atan(cm / dist) * 180) / Math.PI
+function ptToDeg(px: number): number {
+  // 估算：macOS 默认缩放下 1pt ≈ 0.023cm，眼睛到屏幕按 55cm 算
+  return (Math.atan((px * 0.023) / 55) * 180) / Math.PI
 }
 
 export function Calibration(): React.JSX.Element | null {
@@ -63,7 +61,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
   const [face, setFace] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef(false)
-  const headZRef = useRef<number | null>(null)
+  const scaleRef = useRef<number | null>(null)
 
   // 进全屏；退出时还原窗口
   useEffect(() => {
@@ -85,7 +83,9 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     const off = gaze.events.on('frame', (f) => setFace(f.faceBox))
     return () => {
       off()
+      // 从 DOM 里拿掉的 video 会被浏览器自动暂停，要马上接着播，不然眼动循环就停了
       v.remove()
+      v.play().catch(() => undefined)
     }
   }, [phase])
 
@@ -107,12 +107,23 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+  /** 等窗口真的铺满屏幕、主进程把新位置推过来，再开始算校准点的屏幕坐标 */
+  async function waitFullscreen(): Promise<void> {
+    for (let i = 0; i < 20; i++) {
+      await la.win.requestBounds()
+      await sleep(80)
+      const b = boundsStore.get()
+      if (b.mode === 'calibration' && Math.abs(b.content.width - b.display.width) < 2 && Math.abs(b.content.height - b.display.height) < 2) return
+    }
+  }
+
   async function run(): Promise<void> {
     if (status.state !== 'running') {
       toast('摄像头还没准备好', 'warn')
       return
     }
-    await sleep(350)
+    await waitFullscreen()
+    await sleep(250)
     const pts = pattern(settings?.gaze.calibrationPoints ?? 17)
     setTotal(pts.length)
     setPhase('points')
@@ -149,7 +160,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
         ty.push(s.y)
         groups.push(i)
       }
-      if (got.headZ) zs.push(got.headZ)
+      if (got.faceScale) zs.push(got.faceScale)
       rumble('soft', 'R')
     }
     setDot(null)
@@ -162,8 +173,8 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     const input: FitInput = { rows, tx, ty, groups, screenW: W, screenH: H }
     try {
       const { model, ms } = await gaze.fit(input)
-      headZRef.current = zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null
-      gaze.setModel(model, headZRef.current)
+      scaleRef.current = zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null
+      gaze.setModel(model, scaleRef.current)
       setResult({ cv: model.cvErrorPx, ms, samples: rows.length })
       setPhase('result')
       rumble('done', 'R')
@@ -179,7 +190,8 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
       close()
       return
     }
-    await sleep(500)
+    await waitFullscreen()
+    await sleep(300)
     const W = window.innerWidth
     const H = window.innerHeight
     const pts: Array<[number, number]> = [[0.5, 0.5], [0.2, 0.25], [0.8, 0.3], [0.25, 0.78], [0.78, 0.75]]
@@ -209,7 +221,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     setDot(null)
     const errs = out.map((p) => Math.hypot(p.gx - p.tx, p.gy - p.ty))
     const px = errs.length ? errs.reduce((a, b) => a + b, 0) / errs.length : 0
-    setValErr({ px, deg: ptToDeg(px, gaze.status.get().headZ), points: out })
+    setValErr({ px, deg: ptToDeg(px), points: out })
     setPhase('validateResult')
   }
 
@@ -219,7 +231,8 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
       close()
       return
     }
-    await sleep(450)
+    await waitFullscreen()
+    await sleep(250)
     const cx = window.innerWidth / 2
     const cy = window.innerHeight / 2
     setDot({ x: cx, y: cy, shrink: false })
@@ -237,7 +250,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     close()
   }
 
-  const dist = status.headZ
+  const scale = status.faceScale
 
   return (
     <div className="calib">
@@ -266,8 +279,8 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
             <span>摄像头：{status.cameraLabel || '启动中…'}</span>
             <span>帧率：{status.fps} fps</span>
             <span>
-              距离：{dist ? `约 ${dist} cm` : '—'}
-              {dist && dist < 38 ? '（太近了，往后坐一点）' : dist && dist > 80 ? '（太远了）' : ''}
+              脸占画面：{scale ? `${Math.round(scale * 100)}%` : '—'}
+              {scale && scale > 0.42 ? '（太近了，往后坐一点）' : scale && scale < 0.13 ? '（太远了，往前坐一点）' : ''}
             </span>
           </div>
           <ul className="calib-tips">
@@ -310,11 +323,14 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
           <h2>校准完成</h2>
           <p className="big">
             {result.cv != null ? `交叉验证误差 ≈ ${Math.round(result.cv)} 点` : '已完成'}
-            {result.cv != null && <small>（约 {ptToDeg(result.cv, headZRef.current).toFixed(1)}°）</small>}
+            {result.cv != null && <small>（约 {ptToDeg(result.cv).toFixed(1)}°）</small>}
           </p>
           <p className="dim">
             {result.samples} 帧样本 · 拟合 {Math.round(result.ms)} ms。普通摄像头能到段落级，最后一步靠 Joy-Con 摇杆微调。
           </p>
+          {result.cv != null && result.cv > 250 && (
+            <p className="warn">误差偏大：多半是校准时头动了、光线从背后来，或者没盯住点。调好再「重新校准」一次。</p>
+          )}
           <div className="calib-actions">
             <button className="btn primary" onClick={close}>
               开始用（A）

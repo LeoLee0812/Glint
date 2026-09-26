@@ -38,8 +38,9 @@ export interface GazeStatus {
   cvErrorPx: number | null
   cameraLabel: string
   cameras: Array<{ id: string; label: string }>
-  headZ: number | null
-  calibHeadZ: number | null
+  /** 脸宽占画面宽度的比例，用来看人离屏幕的远近有没有变 */
+  faceScale: number | null
+  calibFaceScale: number | null
   driftPx: number
   /** 画面几乎全黑（镜头被挡 / iPhone 扣在桌上） */
   dark: boolean
@@ -56,8 +57,8 @@ class GazeEngine {
     cvErrorPx: null,
     cameraLabel: '',
     cameras: [],
-    headZ: null,
-    calibHeadZ: null,
+    faceScale: null,
+    calibFaceScale: null,
     driftPx: 0,
     dark: false
   })
@@ -83,7 +84,7 @@ class GazeEngine {
   private frameCount = 0
   private fpsT0 = performance.now()
   private lastFaceAt = 0
-  private headZs: number[] = []
+  private scales: number[] = []
   private tiny = document.createElement('canvas')
   private tinyCtx = this.tiny.getContext('2d', { willReadFrequently: true })!
   lastSample: GazeSample | null = null
@@ -166,17 +167,27 @@ class GazeEngine {
 
   stop(): void {
     this.running = false
+    if (this.watchdog) {
+      clearInterval(this.watchdog)
+      this.watchdog = null
+    }
     this.stream?.getTracks().forEach((t) => t.stop())
     this.stream = null
     this.video.srcObject = null
     if (this.status.get().state !== 'off') this.status.patch({ state: 'off', face: false, fps: 0 })
   }
 
+  private loopGen = 0
+  private lastProcessAt = 0
+  private watchdog: ReturnType<typeof setInterval> | null = null
+
   private loop(): void {
     if (!this.running) return
+    const gen = ++this.loopGen
     const v = this.video as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }
     const next = () => {
-      if (!this.running) return
+      if (!this.running || gen !== this.loopGen) return
+      this.lastProcessAt = performance.now()
       try {
         this.process()
       } catch (e) {
@@ -187,6 +198,16 @@ class GazeEngine {
     }
     if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(next)
     else setTimeout(next, 33)
+    // 看门狗：video 被挪出 DOM 会自动暂停、帧回调就断了，1.5 秒没出帧就重新播放并重挂循环
+    if (!this.watchdog) {
+      this.watchdog = setInterval(() => {
+        if (!this.running) return
+        if (performance.now() - this.lastProcessAt > 1500) {
+          this.video.play().catch(() => undefined)
+          this.loop()
+        }
+      }, 1000)
+    }
   }
 
   private process(): void {
@@ -243,17 +264,15 @@ class GazeEngine {
       headZ = det.headPose ? Math.abs(det.headPose.translationZ) : null
       faceBox = { x: det.boundingBox.x / vw, y: det.boundingBox.y / vh, w: det.boundingBox.width / vw, h: det.boundingBox.height / vh }
       this.lastFaceAt = t
-      if (headZ) {
-        this.headZs.push(headZ)
-        if (this.headZs.length > 30) this.headZs.shift()
-      }
+      this.scales.push(faceBox.w)
+      if (this.scales.length > 30) this.scales.shift()
     }
     const face = !!features
     const st = this.status.get()
     if (st.face !== face && (face || t - this.lastFaceAt > 600)) this.status.patch({ face })
-    if (headZ && this.frameCount % 15 === 0) {
-      const avg = this.headZs.reduce((a, b) => a + b, 0) / this.headZs.length
-      this.status.patch({ headZ: Math.round(avg) })
+    if (face && this.frameCount % 15 === 0 && this.scales.length) {
+      const avg = this.scales.reduce((a, b) => a + b, 0) / this.scales.length
+      this.status.patch({ faceScale: Math.round(avg * 1000) / 1000 })
     }
 
     this.events.emit('frame', { t, features, face, blink, headZ, faceBox })
@@ -315,14 +334,15 @@ class GazeEngine {
       const m = JSON.parse(raw) as RidgeModel
       if (m && m.d > 0 && m.betaX?.length === m.d) {
         this.model = m
-        this.status.patch({ calibrated: true, cvErrorPx: m.cvErrorPx })
+        const sc = Number(localStorage.getItem(MODEL_KEY + '.scale'))
+        this.status.patch({ calibrated: true, cvErrorPx: m.cvErrorPx, calibFaceScale: sc > 0 ? sc : null })
       }
     } catch {
       /* 旧模型坏了就当没校准 */
     }
   }
 
-  setModel(m: RidgeModel, headZ: number | null): void {
+  setModel(m: RidgeModel, faceScale: number | null): void {
     this.model = m
     this.residuals = []
     this.filter.reset()
@@ -332,7 +352,12 @@ class GazeEngine {
     } catch {
       /* 存不下就只在本次会话有效 */
     }
-    this.status.patch({ calibrated: true, cvErrorPx: m.cvErrorPx, calibHeadZ: headZ, driftPx: 0 })
+    this.status.patch({ calibrated: true, cvErrorPx: m.cvErrorPx, calibFaceScale: faceScale, driftPx: 0 })
+    try {
+      localStorage.setItem(MODEL_KEY + '.scale', String(faceScale ?? ''))
+    } catch {
+      /* 忽略 */
+    }
   }
 
   clearModel(): void {
@@ -359,27 +384,28 @@ class GazeEngine {
   }
 
   /** 收集 ms 毫秒内的有效特征帧（有脸、没眨眼） */
-  collect(ms: number, onProgress?: (n: number) => void): Promise<{ rows: Float64Array[]; headZ: number | null }> {
+  collect(ms: number, onProgress?: (n: number) => void): Promise<{ rows: Float64Array[]; faceScale: number | null }> {
     return new Promise((resolve) => {
       const rows: Float64Array[] = []
-      const zs: number[] = []
+      const sc: number[] = []
       const t0 = performance.now()
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        off()
+        resolve({ rows, faceScale: sc.length ? sc.reduce((a, b) => a + b, 0) / sc.length : null })
+      }
       const off = this.events.on('frame', (f) => {
         if (f.features && f.blink < 0.4) {
           rows.push(f.features)
-          if (f.headZ) zs.push(f.headZ)
+          if (f.faceBox) sc.push(f.faceBox.w)
           onProgress?.(rows.length)
         }
-        if (performance.now() - t0 >= ms) {
-          off()
-          resolve({ rows, headZ: zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null })
-        }
+        if (performance.now() - t0 >= ms) finish()
       })
       // 摄像头没出帧也要能结束
-      setTimeout(() => {
-        off()
-        resolve({ rows, headZ: zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null })
-      }, ms + 1500)
+      setTimeout(finish, ms + 1500)
     })
   }
 
