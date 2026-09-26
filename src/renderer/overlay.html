@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>LookAsk Overlay</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100vw; height: 100vh; }
+      #gaze { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+        border: 2px solid rgba(94, 234, 212, 0.85); box-shadow: 0 0 18px rgba(94, 234, 212, 0.45); pointer-events: none;
+        transition: transform 60ms linear; display: none; }
+      #focus { position: fixed; border-radius: 8px; pointer-events: none; display: none;
+        border: 2px solid rgba(250, 204, 21, 0.9); background: rgba(250, 204, 21, 0.10); box-shadow: 0 0 0 4000px rgba(0,0,0,0.0); }
+      #focus.soft { border-color: rgba(94, 234, 212, 0.55); background: rgba(94, 234, 212, 0.06); border-style: dashed; }
+      #label { position: fixed; pointer-events: none; display: none; font: 12px -apple-system, "PingFang SC", sans-serif;
+        color: #0b0f14; background: rgba(250, 204, 21, 0.95); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="focus"></div>
+    <div id="label"></div>
+    <div id="gaze"></div>
+    <script type="module" src="./overlay/overlay.ts"></script>
+  </body>
+</html>
