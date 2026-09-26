@@ -64,6 +64,9 @@ const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
 // 开发模式：开远程调试端口（方便自动化测试），渲染进程日志转到终端
 if (isDev) app.commandLine.appendSwitch('remote-debugging-port', process.env.LOOKASK_DEBUG_PORT || '9333')
+// 测试用：LOOKASK_FAKE_CAM=1 用 Chromium 的假摄像头（测校准流程，不需要真人）
+if (process.env.LOOKASK_FAKE_CAM) app.commandLine.appendSwitch('use-fake-device-for-media-stream')
+if (process.env.LOOKASK_FAKE_CAM_FILE) app.commandLine.appendSwitch('use-file-for-fake-video-capture', process.env.LOOKASK_FAKE_CAM_FILE)
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -197,6 +200,10 @@ function enterGlobal(): void {
   loadRenderer(overlay, 'overlay')
   overlay.once('ready-to-show', () => overlay?.showInactive())
   setTimeout(pushBounds, 150)
+  // 第一次进全局模式时顺手触发录屏授权弹窗
+  if (systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => undefined)
+  }
 }
 
 function exitGlobal(): void {
@@ -213,8 +220,9 @@ function exitGlobal(): void {
 // ---------- 截屏：全局模式下取视线处画面，给 OCR 和视觉模型 ----------
 
 async function captureScreenRect(rect: Rect): Promise<{ dataUrl: string; path: string } | { error: string }> {
+  // 明确拒绝过才拦；还没问过的话直接截一次，系统会弹授权框并把 LookAsk 加进列表
   const status = systemPreferences.getMediaAccessStatus('screen')
-  if (status !== 'granted') {
+  if (status === 'denied' || status === 'restricted') {
     return { error: 'screen_permission' }
   }
   const d = screen.getDisplayMatching({ x: Math.round(rect.x), y: Math.round(rect.y), width: 2, height: 2 })
