@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2433"/>
+      <stop offset="1" stop-color="#0a0d12"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#99f6e4"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <radialGradient id="cap" cx="0.42" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#3a4557"/>
+      <stop offset="1" stop-color="#11161f"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="#2a3446" stroke-width="4"/>
+  <!-- 眼睛轮廓 -->
+  <path d="M190 512 C 300 330, 724 330, 834 512 C 724 694, 300 694, 190 512 Z" fill="none" stroke="url(#teal)" stroke-width="30" stroke-linejoin="round" filter="url(#glow)"/>
+  <!-- 虹膜 = 摇杆底座 -->
+  <circle cx="512" cy="512" r="138" fill="#0d1219" stroke="url(#teal)" stroke-width="22"/>
+  <!-- 摇杆帽 -->
+  <circle cx="512" cy="512" r="96" fill="url(#cap)"/>
+  <circle cx="512" cy="512" r="96" fill="none" stroke="#56627a" stroke-width="6"/>
+  <circle cx="512" cy="512" r="62" fill="none" stroke="#2b3444" stroke-width="10"/>
+  <!-- 焦点（琥珀色） -->
+  <circle cx="546" cy="478" r="26" fill="#facc15" filter="url(#glow)"/>
+  <!-- 被选中的一行字 -->
+  <rect x="372" y="742" width="280" height="30" rx="10" fill="#facc15" opacity="0.92"/>
+  <rect x="300" y="742" width="52" height="30" rx="10" fill="#334155"/>
+  <rect x="672" y="742" width="52" height="30" rx="10" fill="#334155"/>
+</svg>
