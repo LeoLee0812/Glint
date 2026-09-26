@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.leo.lookask.bridge</string>
+  <key>CFBundleName</key><string>LookAsk Bridge</string>
+  <key>CFBundleVersion</key><string>0.1.0</string>
+  <key>NSMicrophoneUsageDescription</key><string>按住 Joy-Con 扳机说话时，需要用麦克风把你的问题转成文字。</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>LookAsk 用系统语音识别把你说的话转成文字，Apple 芯片上在本机完成。</string>
+</dict>
+</plist>
