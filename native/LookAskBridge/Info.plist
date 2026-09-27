@@ -7,5 +7,7 @@
   <key>CFBundleVersion</key><string>0.1.0</string>
   <key>NSMicrophoneUsageDescription</key><string>按住 Joy-Con 扳机说话时，需要用麦克风把你的问题转成文字。</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>LookAsk 用系统语音识别把你说的话转成文字，Apple 芯片上在本机完成。</string>
+  <key>NSLocalNetworkUsageDescription</key><string>接收 iPhone 上 LookAskEye 发来的原深感眼动数据（只在本地网络里传，不出局域网）。</string>
+  <key>NSBonjourServices</key><array><string>_lookask._udp</string></array>
 </dict>
 </plist>

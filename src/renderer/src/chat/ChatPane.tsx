@@ -5,7 +5,7 @@ import { renderMarkdown, renderStreaming } from './markdown'
 import { focus, panes } from '../focus/focus'
 import { DomAdapter, ElementBlocks } from '../focus/domAdapter'
 import { GRAN_LABEL, unionBox } from '../focus/types'
-import { settingsStore, updateSettings, la, toast, uiStore, setUiMode } from '../appState'
+import { settingsStore, updateSettings, la, toast, uiStore } from '../appState'
 import { openDoc } from '../panes/docs'
 import { JevPanel } from '../jev/JevPanel'
 import { JevBadges } from '../jev/JevBadges'
@@ -64,7 +64,7 @@ function FocusChip(): React.JSX.Element {
         <Icon name={f.mode === 'hard' ? 'scope' : 'eye'} />
         {GRAN_LABEL[f.gran]}
       </span>
-      <span className="fc-text">{text ? (text.length > 80 ? text.slice(0, 80) + '…' : text) : f.sel.space === 'screen' ? '（屏幕区域，发问时再截图识别）' : ''}</span>
+      <span className="fc-text">{text ? (text.length > 80 ? text.slice(0, 80) + '…' : text) : ''}</span>
     </div>
   )
 }
@@ -307,11 +307,6 @@ export function ChatPane(): React.JSX.Element {
   return (
     <section className="right">
       <header className="chat-head">
-        {ui.mode === 'global' && (
-          <button className="btn sm" onClick={() => setUiMode('normal')} title="回到普通模式（长按 HOME）">
-            ← 退出全局
-          </button>
-        )}
         <ModelPicker />
         <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="Jev 模式：先判断再开口（长按右手柄 +）">
           <input
@@ -332,7 +327,7 @@ export function ChatPane(): React.JSX.Element {
         <button
           className="btn sm ghost"
           onClick={async () => {
-            const p = await la.file.saveText('LookAsk 对话.md', exportChat())
+            const p = await la.file.saveText('Glint 对话.md', exportChat())
             if (p) toast('已导出 ' + p, 'ok')
           }}
           title="导出成 Markdown"
@@ -358,7 +353,7 @@ export function ChatPane(): React.JSX.Element {
           <div className="chat-empty no-focus">
             <p>
               <Icon name="eye" />
-              <span>{ui.mode === 'global' ? '看向屏幕上任何一处' : '看向左边的一段'}，按 <b>A</b> 解释</span>
+              <span>看向左边的一段，按 <b>A</b> 解释</span>
             </p>
             <p>
               <Icon name="gamepad" />

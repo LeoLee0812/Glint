@@ -1,4 +1,4 @@
-/* LookAsk 界面：iOS 风格纯白 —— 白底、系统蓝、毛玻璃栏、发丝分隔线、大圆角；视线是一团会变形的青色光环 */
+/* Glint 瞳问界面：iOS 风格纯白 —— 白底、系统蓝、毛玻璃栏、发丝分隔线、大圆角；视线是一团会变形的青色光环 */
 
 :root {
   --bg: #ffffff;
@@ -197,19 +197,11 @@ kbd {
   align-items: center;
   white-space: nowrap;
 }
-.brand-mark {
+.brand-logo {
   width: 22px;
   height: 22px;
-  border-radius: 7px;
-  background: linear-gradient(145deg, #5ac8fa, #007aff);
-  display: grid;
-  place-items: center;
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 122, 255, 0.35);
-}
-.brand-mark .ic {
-  width: 14px;
-  height: 14px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 .brand b {
   font-size: 15px;
@@ -312,16 +304,6 @@ kbd {
 .bat.b2::after { width: 7px; }
 .bat.b3::after { width: 10px; }
 .bat.b4::after { width: 14px; background: var(--green); }
-
-.mode-global .topbar {
-  gap: 8px;
-}
-.mode-global .brand,
-.mode-global .actions .ghost:not(:last-child),
-.mode-global .pill.dim-pill,
-.mode-global .pill.focus-pill {
-  display: none;
-}
 
 /* ---------- 分栏 ---------- */
 .split {
@@ -628,15 +610,6 @@ kbd {
 .md-doc img {
   max-width: 100%;
   border-radius: 10px;
-}
-.window-pane .perm-list li.ok {
-  color: var(--green);
-}
-.window-pane .perm-list li.bad {
-  color: var(--red);
-}
-.window-pane .perm-list .btn {
-  margin-left: 10px;
 }
 
 /* ---------- PDF ---------- */
@@ -1212,6 +1185,31 @@ kbd {
   color: var(--fg2);
   font-size: 13px;
 }
+/* 原深感：没有摄像头画面，校准前显示手机连接状态 */
+.calib-td {
+  width: 480px;
+  max-width: 80vw;
+  border-radius: 20px;
+  padding: 22px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-lg);
+  background: var(--bg-grouped);
+  border: 2px solid transparent;
+}
+.calib-td.ok {
+  border-color: rgba(52, 199, 89, 0.45);
+}
+.calib-td.bad {
+  border-color: rgba(255, 149, 0, 0.45);
+}
+.calib-td-main {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
 .calib-tips {
   text-align: left;
   color: var(--fg2);
@@ -1425,6 +1423,32 @@ kbd {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+/* 设置 → 眼动：iPhone 原深感配对 */
+.td-card {
+  gap: 8px;
+}
+.td-dev {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--sep);
+}
+.td-code {
+  width: 78px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.2em;
+}
+.td-msg {
+  flex-basis: 100%;
+  color: var(--fg2);
+}
+.warn-text {
+  color: #b25000;
 }
 .form {
   display: flex;

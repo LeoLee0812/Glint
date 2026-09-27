@@ -1,4 +1,4 @@
-// 焦点系统的公共类型：每种左侧视图（Markdown / PDF / 终端 / 全局屏幕）和右侧对话都实现 PaneAdapter
+// 焦点系统的公共类型：每种左侧视图（Markdown / PDF / 终端）和右侧对话都实现 PaneAdapter
 
 export type Granularity = 'word' | 'sentence' | 'paragraph' | 'section'
 
@@ -14,15 +14,15 @@ export interface Box {
 
 export interface Selection {
   rects: Box[]
-  /** client = 主窗口坐标；screen = 屏幕坐标（全局模式） */
-  space: 'client' | 'screen'
+  /** 主窗口坐标 */
+  space: 'client'
   text: string
   gran: Granularity
   /** 所在块的稳定标识，给 Jev 统计停留和回看 */
   blockKey?: string
 }
 
-export type SourceKind = 'markdown' | 'pdf' | 'terminal' | 'screen' | 'chat'
+export type SourceKind = 'markdown' | 'pdf' | 'terminal' | 'chat'
 
 export interface FocusContext {
   source: SourceKind
@@ -35,8 +35,7 @@ export interface FocusContext {
   before?: string
   after?: string
   image?: string
-  app?: string
-  /** 终端 / 屏幕上附带的大段原文 */
+  /** 终端上附带的大段原文 */
   extra?: string
   /** 焦点落在哪条消息 / 哪张解释卡片里（对话区用，决定解释窗口从哪一层往下裂变） */
   ref?: string

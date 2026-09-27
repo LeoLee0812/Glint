@@ -115,7 +115,7 @@ function probes(radius: number): Array<[number, number]> {
 export function keywordNear(x: number, y: number, prm: SnapParams = snapParams()): Magnet | null {
   const radius = prm.radius
   const pane = panes.at(x, y)
-  if (!pane || pane.kind === 'terminal' || pane.kind === 'screen') return null
+  if (!pane || pane.kind === 'terminal') return null
   const root = pane.element()
   if (!root) return null
   const seen = new Set<string>()

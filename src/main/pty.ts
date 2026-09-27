@@ -25,7 +25,7 @@ export function createPty(opts: { cols: number; rows: number; cwd?: string; shel
   }
   env.TERM = 'xterm-256color'
   env.COLORTERM = 'truecolor'
-  env.TERM_PROGRAM = 'LookAsk'
+  env.TERM_PROGRAM = 'Glint'
   if (!env.LANG) env.LANG = 'zh_CN.UTF-8'
   // 从 Finder 双击启动时 PATH 很短，补上 Homebrew 常见路径兜底
   env.PATH = ['/opt/homebrew/bin', '/usr/local/bin', env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'].join(':')

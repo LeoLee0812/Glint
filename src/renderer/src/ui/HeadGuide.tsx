@@ -9,6 +9,7 @@ import { Icon } from './Icon'
 // 实时小人：一直待在屏幕角落的「小镜子」。你的卡通形象跟着你的头实时动（挪位置、远近、歪头、转头、点头、眨眼），
 // 虚线圈是校准时头的位置；一偏就告诉你往哪挪，偏了超过 1.2 秒震一下手柄、给出「就在这儿重新校准」。
 // 形象是拍大头照后图生图画的，还没拍就先用内置的默认小人；默认待在右边回答区的右上角（不挡左边正在读的内容），可以拖到任何地方
+// 输入源是 iPhone 原深感时，头的三维位姿来自手机；几何换算会补偿头动，所以只在偏得很多时才提醒（阈值放宽 3 倍）
 
 const LOUD_AFTER = 1200
 const GOOD_AFTER = 600
@@ -19,6 +20,8 @@ const STAGE_H = 112
 const VIEW = 0.9
 /** 卡通头像直径 ≈ 脸宽 × 这个倍数（带上头发和一点肩膀） */
 const HEAD_K = 1.55
+/** 原深感提醒阈值的放宽倍数 */
+const TD_SLACK = 3
 
 type Phase = 'nocam' | 'nocal' | 'lost' | 'off' | 'good'
 
@@ -69,8 +72,10 @@ export function HeadGuide(): React.JSX.Element | null {
   /** 点头的基准：校准时的，没有就慢慢跟着平时的姿势走 */
   const pitchBase = useRef<number | null>(null)
 
+  const td = st.source === 'truedepth'
   const running = st.state === 'running'
   const calibrated = st.calibrated && !!ref
+  const slack = td ? TD_SLACK : 1
 
   useEffect(() => {
     if (!running) {
@@ -100,8 +105,8 @@ export function HeadGuide(): React.JSX.Element | null {
       return
     }
     // 迟滞：偏过阈值才算偏，回到 70% 以内才算回正
-    const strict = adviseHead(cur, ref!, 1)
-    const loose = adviseHead(cur, ref!, 0.7)
+    const strict = adviseHead(cur, ref!, slack)
+    const loose = adviseHead(cur, ref!, 0.7 * slack)
     headAdviceStore.set({ advice: strict.main ? strict : null, lost: false })
     if (strict.main) {
       okSince.current = 0
@@ -125,7 +130,7 @@ export function HeadGuide(): React.JSX.Element | null {
       // 在回正的路上：文字跟着更新
       setAdvice(loose)
     }
-  }, [cur, ref, running, calibrated])
+  }, [cur, ref, running, calibrated, slack])
 
   // 生成小人时每秒刷新一下已用时间
   useEffect(() => {
@@ -134,8 +139,8 @@ export function HeadGuide(): React.JSX.Element | null {
     return () => clearInterval(id)
   }, [av.busy])
 
-  // ---------- 拖动：按离窗口右边、上边的距离记住，普通 / 全局模式分开 ----------
-  const posKey = `lookask.buddy.rt.${ui.mode === 'global' ? 'global' : 'normal'}`
+  // ---------- 拖动：按离窗口右边、上边的距离记住 ----------
+  const posKey = 'lookask.buddy.rt.normal'
   const [pos, setPos] = useState<{ right: number; top: number } | null>(null)
   const posRef = useRef(pos)
   posRef.current = pos
@@ -151,7 +156,7 @@ export function HeadGuide(): React.JSX.Element | null {
 
   if (!s || s.avatar?.show === false || ui.showCalibration || ui.showBooth || ui.mode === 'calibration') return null
 
-  // 默认在右边：对话标题栏下面、贴着右边（全局模式的侧边栏里也一样）
+  // 默认在右边：对话标题栏下面、贴着右边
   const headBottom = document.querySelector('.right .chat-head')?.getBoundingClientRect().bottom ?? 102
   const at = pos ?? { right: 14, top: headBottom + 10 }
   const right = clamp(at.right, 4, Math.max(4, window.innerWidth - 60))
@@ -177,13 +182,21 @@ export function HeadGuide(): React.JSX.Element | null {
   const pitch = p?.pitch != null && base != null ? clamp(-(p.pitch - base) * 150, -25, 25) : 0
   const showArrow = phase === 'off' && Math.hypot(hx - STAGE_W / 2, hy - STAGE_H / 2) > 12
 
-  const text: Record<Phase, [string, string]> = {
-    nocam: ['摄像头没开', '点一下打开'],
-    nocal: ['还没校准', '校准后我会记住你坐的位置'],
-    lost: ['看不到你的脸', '回到摄像头正前方，脸完整露出来'],
-    off: [advice?.main || '偏了', advice?.sub || '回到虚线圈里'],
-    good: ['位置正好', '和校准时一致，视线会准']
-  }
+  const text: Record<Phase, [string, string]> = td
+    ? {
+        nocam: ['iPhone 没连上', st.link?.state === 'unpaired' ? '到设置 → 眼动 输入配对码' : '打开手机上的 LookAskEye'],
+        nocal: ['还没校准', '原深感校准一次就行，头动会自动补偿'],
+        lost: ['手机看不到你的脸', '前置镜头对着脸，别挡住'],
+        off: [advice?.main || '偏得有点多', advice?.sub || '回到手机镜头前面'],
+        good: ['位置正好', '原深感会补偿头动，放松坐']
+      }
+    : {
+        nocam: ['摄像头没开', '点一下打开'],
+        nocal: ['还没校准', '校准后我会记住你坐的位置'],
+        lost: ['看不到你的脸', '回到摄像头正前方，脸完整露出来'],
+        off: [advice?.main || '偏了', advice?.sub || '回到虚线圈里'],
+        good: ['位置正好', '和校准时一致，视线会准']
+      }
   const [main, sub] = text[phase]
   const genSec = av.busy ? Math.round((Date.now() - av.since) / 1000) : 0
 
@@ -215,7 +228,11 @@ export function HeadGuide(): React.JSX.Element | null {
         if (drag.current && posRef.current) localStorage.setItem(posKey, JSON.stringify(posRef.current))
         drag.current = null
       }}
-      onClick={() => phase === 'nocam' && gaze.start(s.gaze.cameraId || undefined)}
+      onClick={() => {
+        if (phase !== 'nocam') return
+        if (td && st.state !== 'off') uiStore.patch({ showSettings: true, settingsTab: 'gaze' })
+        else gaze.start(s.gaze.cameraId || undefined)
+      }}
     >
       <div className="buddy-stage" style={{ width: STAGE_W, height: STAGE_H }}>
         {calibrated && <div className="buddy-ref" style={{ width: refD, height: refD, left: STAGE_W / 2 - refD / 2, top: STAGE_H / 2 - refD / 2 }} />}

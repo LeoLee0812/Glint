@@ -26,7 +26,7 @@ const RIGHT: Array<[string, string]> = [
   ['ZR（按住）', '说话提问，松开发送'],
   ['R', '粒度：词 → 句 → 段 → 节'],
   ['+', '视线跟右边的回答，不懂的按 A 往下裂变解释 · 长按 = Jev 开/关'],
-  ['HOME', '显示/隐藏 · 长按退出全局模式']
+  ['HOME', '显示/隐藏 Glint']
 ]
 
 export function JoyHelp(): React.JSX.Element | null {

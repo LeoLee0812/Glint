@@ -1,5 +1,5 @@
 import { createStore, Emitter } from '../store'
-import { boundsStore, screenToClient, clientToScreen, uiStore, la, settingsStore, toast, dismissToast, rumble, type Side } from '../appState'
+import { boundsStore, screenToClient, clientToScreen, uiStore, toast, dismissToast, rumble, type Side } from '../appState'
 import { gaze } from '../gaze/engine'
 import type { Fixation } from '../gaze/filters'
 import type { Anchor, Box, Dir, FocusContext, Granularity, PaneAdapter, Selection } from './types'
@@ -17,7 +17,7 @@ import { magnetNow, snapParams } from './snap'
 /** 视线落在这一侧外面多远以内，还算这一侧（拉回边上）；再远就当在看另一边 */
 const SIDE_MARGIN = 70
 
-/** 视图属于哪一侧：对话区和它下面裂变出的解释窗口在右边，其余（文档、终端、全局屏幕）在左边 */
+/** 视图属于哪一侧：对话区和它下面裂变出的解释窗口在右边，其余（文档、终端）在左边 */
 export function sideOfPane(id: string | null | undefined): Side | null {
   if (!id) return null
   return id === 'chat' || id === 'fork' ? 'right' : 'left'
@@ -25,14 +25,8 @@ export function sideOfPane(id: string | null | undefined): Side | null {
 
 const regionEls: Partial<Record<Side, Element>> = {}
 
-/** 这一侧在屏幕上的范围（屏幕坐标）；全局模式的左侧 = 整块屏幕去掉右边的侧边栏 */
+/** 这一侧在屏幕上的范围（屏幕坐标） */
 export function sideRegion(side: Side): Box | null {
-  const b = boundsStore.get()
-  if (b.mode === 'global' && side === 'left') {
-    const d = b.display
-    const w = b.content.x - d.x
-    return w > 100 ? { x: d.x, y: d.y, width: w, height: d.height } : { ...d }
-  }
   let el = regionEls[side]
   if (!el?.isConnected) {
     el = document.querySelector(side === 'left' ? '.left-wrap' : 'section.right') || undefined
@@ -61,7 +55,7 @@ export function clientInSide(x: number, y: number, side: Side = uiStore.get().si
 }
 
 /**
- * 眼睛跑到另一侧时，视线光环往哪儿滑走（屏幕坐标）：朝眼睛去的方向一直滑出 bounds（主窗口或整块屏幕），边走边淡，
+ * 眼睛跑到另一侧时，视线光环往哪儿滑走（屏幕坐标）：朝眼睛去的方向一直滑出 bounds（主窗口），边走边淡，
  * 内容模式往右看就往右滑到最右边，回答模式往左看就往左滑走；高度跟着眼睛
  */
 export function exitPoint(p: { x: number; y: number }, side: Side, bounds: Box): { x: number; y: number } {
@@ -101,11 +95,10 @@ class PaneRegistry {
   get(id: string | null): PaneAdapter | null {
     return id ? this.map.get(id) || null : null
   }
-  /** 在某一侧（默认当前这一侧）找包含该点的视图；全局模式的左侧永远是屏幕适配器（屏幕坐标），其余用窗口坐标 */
+  /** 在某一侧（默认当前这一侧）找包含该点的视图（窗口坐标） */
   at(x: number, y: number, side: Side = uiStore.get().side): PaneAdapter | null {
-    if (uiStore.get().mode === 'global' && side === 'left') return this.map.get('screen') || null
     for (const p of this.map.values()) {
-      if (p.id === 'screen' || sideOfPane(p.id) !== side) continue
+      if (sideOfPane(p.id) !== side) continue
       const el = p.element()
       if (!el || !el.isConnected) continue
       const r = el.getBoundingClientRect()
@@ -140,10 +133,9 @@ class FocusController {
 
   // ---------- 视线驱动 ----------
 
-  /** 屏幕坐标 → 当前这一侧视图用的坐标：全局模式的左侧（整块屏幕）就用屏幕坐标，其余换成主窗口坐标 */
+  /** 屏幕坐标 → 视图用的主窗口坐标 */
   private paneSpace(s: { x: number; y: number }): { x: number; y: number } {
-    const ui = uiStore.get()
-    return ui.mode === 'global' && ui.side === 'left' ? { x: s.x, y: s.y } : screenToClient(s.x, s.y)
+    return screenToClient(s.x, s.y)
   }
 
   /** 眼睛（没有可用眼动就用鼠标）此刻落在当前这一侧的哪里，按视图坐标给；在看另一边就是 null */
@@ -168,7 +160,7 @@ class FocusController {
 
   /** 没有可用眼动时，鼠标停住就当一次注视（演示、没校准时也能完整用） */
   pointerFix(x: number, y: number): void {
-    if (uiStore.get().showCalibration || uiStore.get().mode === 'global') return
+    if (uiStore.get().showCalibration) return
     // 鼠标是精确指向，不做贴边吸附：停在另一边就不算
     if (!clientInSide(x, y)) return
     this.pointerSeq++
@@ -319,8 +311,7 @@ class FocusController {
   /** 没有眼动时（没校准 / 键盘演示），从某个窗口坐标点起步；明确点到另一边时视线模式跟着切过去 */
   focusAt(x: number, y: number, mode: 'soft' | 'hard' = 'hard'): void {
     const ui = uiStore.get()
-    // 全局模式下主窗口只剩侧边栏，窗口里点到的一定是右边的对话
-    const side: Side | null = ui.mode === 'global' ? 'right' : panes.at(x, y, 'left') ? 'left' : panes.at(x, y, 'right') ? 'right' : null
+    const side: Side | null = panes.at(x, y, 'left') ? 'left' : panes.at(x, y, 'right') ? 'right' : null
     if (!side) return
     if (side !== ui.side) this.setSide(side)
     const pane = panes.at(x, y, side)
@@ -341,10 +332,7 @@ class FocusController {
     uiStore.patch({ side })
     const m = this.memory[side]
     this.memory[side] = null
-    // 中间进出过全局模式的话，左边的视图已经换了（文档 ↔ 整块屏幕），旧焦点不能要
-    const global = uiStore.get().mode === 'global'
-    const fits = m && (m.pane.id === 'screen' ? global : sideOfPane(m.pane.id) === 'right' || !global)
-    if (m && fits && panes.get(m.pane.id) === m.pane && m.pane.select(m.anchor, m.gran)) {
+    if (m && panes.get(m.pane.id) === m.pane && m.pane.select(m.anchor, m.gran)) {
       this.pane = m.pane
       this.anchor = m.anchor
       this.update(m.mode, m.gran)
@@ -440,7 +428,7 @@ class FocusController {
     if (!u) return null
     const cx = u.x + u.width / 2
     const cy = u.y + u.height / 2
-    return sel!.space === 'screen' ? { x: cx, y: cy } : clientToScreen(cx, cy)
+    return clientToScreen(cx, cy)
   }
 
   /** 焦点是不是「新鲜」的：硬焦点一直算；软焦点 30 秒没动就当过期，打字提问时不再附带 */
@@ -476,12 +464,11 @@ let sideToast: string | null = null
 export function switchSide(side: Side): void {
   if (uiStore.get().side === side) return
   focus.setSide(side)
-  const global = uiStore.get().mode === 'global'
   if (sideToast) dismissToast(sideToast)
   sideToast =
     side === 'right'
       ? toast('视线跟右边的 AI 回答：看到不懂的按 A，解释往下裂变出一个窗口（− 回左边）', 'info', { ttl: 4200 })
-      : toast(global ? '视线跟屏幕：看右边回答时焦点不会跑过去（+ 切到回答）' : '视线跟左边内容：看右边回答时焦点不会跑过去（+ 切到回答）', 'info', { ttl: 3600 })
+      : toast('视线跟左边内容：看右边回答时焦点不会跑过去（+ 切到回答）', 'info', { ttl: 3600 })
   rumble('soft', side === 'right' ? 'R' : 'L')
 }
 
@@ -506,34 +493,6 @@ window.addEventListener(
   },
   true
 )
-
-// 全局模式：把视线和焦点推给透明浮层（视线约 30fps；焦点一变就推）
-let lastOverlay = 0
-function pushOverlay(force = false): void {
-  const ui = uiStore.get()
-  if (ui.mode !== 'global') return
-  const now = performance.now()
-  if (!force && now - lastOverlay < 33) return
-  lastOverlay = now
-  const st = focus.state.get()
-  const u = st.sel ? unionBox(st.sel.rects) : null
-  // 右侧模式下焦点在侧边栏的对话里（窗口坐标），换成屏幕坐标交给浮层画
-  const box: Box | null = u && st.sel?.space === 'client' ? { ...clientToScreen(u.x, u.y), width: u.width, height: u.height } : u
-  const show = settingsStore.get().s?.gaze.showCursor !== false
-  const g = gazeUsable() ? gaze.lastSample?.smooth ?? null : null
-  // 视线圈只画在当前这一侧；眼睛去了另一侧就朝那边滑走
-  const inSide = !!g && !!toSide(g, ui.side, 0)
-  la.overlay.update({
-    gaze: show && g && inSide ? g : null,
-    exit: show && g && !inSide ? exitPoint(g, ui.side, boundsStore.get().display) : null,
-    focus: box,
-    label: st.mode === 'hard' ? st.label : undefined,
-    mode: st.mode === 'hard' ? 'hard' : 'soft'
-  })
-}
-gaze.events.on('sample', () => pushOverlay())
-focus.state.subscribe(() => pushOverlay(true))
-uiStore.subscribe(() => pushOverlay(true))
 
 // 窗口移动/缩放后高亮要跟着重算
 boundsStore.subscribe(() => focus.refresh())

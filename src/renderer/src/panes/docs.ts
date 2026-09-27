@@ -2,9 +2,9 @@ import { createStore, uid } from '../store'
 import { la, toast } from '../appState'
 import { WELCOME_MD } from './welcome'
 
-// 左侧标签页：每个标签是一份「文档」——Markdown、PDF、终端或全局模式入口
+// 左侧标签页：每个标签是一份「文档」——Markdown、PDF 或终端
 
-export type DocKind = 'md' | 'pdf' | 'terminal' | 'window'
+export type DocKind = 'md' | 'pdf' | 'terminal'
 
 export interface Doc {
   id: string
@@ -17,8 +17,7 @@ export interface Doc {
 
 const initial: Doc[] = [
   { id: 'welcome', kind: 'md', title: '使用说明', text: WELCOME_MD },
-  { id: 'term1', kind: 'terminal', title: '终端' },
-  { id: 'window', kind: 'window', title: '全局模式' }
+  { id: 'term1', kind: 'terminal', title: '终端' }
 ]
 
 export const docsStore = createStore<{ docs: Doc[]; active: string }>({ docs: initial, active: 'welcome' })

@@ -28,7 +28,20 @@ export interface JevConfig {
   dailyTokenCap: number
 }
 
+/** 眼动输入源：Mac 摄像头（平面画面）或 iPhone 原深感（三维头姿 + 双眼朝向） */
+export type GazeSourceKind = 'webcam' | 'truedepth'
+
+/**
+ * iPhone 放在哪：bottom = 竖放在屏幕和键盘之间的缝里（会挡住屏幕中下部，校准点避开）；
+ * top = 用背板挂在屏幕后面、镜头露出上沿；free = 其它不挡屏幕的位置
+ */
+export type TdMount = 'bottom' | 'top' | 'free'
+
 export interface GazeConfig {
+  /** 眼动输入源 */
+  source: GazeSourceKind
+  /** iPhone 原深感的摆放位置 */
+  tdMount: TdMount
   cameraId: string
   calibrationPoints: 9 | 17
   showCursor: boolean
@@ -137,19 +150,13 @@ export type BridgeEvent =
   | { t: 'joy'; side: 'L' | 'R' | 'P'; id: string; b: number; lx: number; ly: number; rx: number; ry: number; bat: number; chg: boolean }
   | { t: 'joy_conn'; side: 'L' | 'R' | 'P'; id: string; name: string; connected: boolean }
   | { t: 'asr'; state: 'listening' | 'partial' | 'final' | 'error'; text?: string; error?: string; target?: string }
-  | { t: 'ocr'; id: number; w?: number; h?: number; lines?: OcrLine[]; error?: string }
-  | { t: 'ax'; id: number; app?: string; role?: string; title?: string; text?: string; line?: string; window?: string; error?: string }
   | { t: 'log'; msg: string }
   | { t: 'bridge_exit'; code: number | null }
-
-export interface OcrLine {
-  text: string
-  conf: number
-  x: number
-  y: number
-  w: number
-  h: number
-}
+  | { t: 'td_listen'; ok: boolean; port?: number; name?: string; error?: string; stopped?: boolean }
+  | { t: 'td_service'; name: string }
+  /** 原深感原始数据报：原样转过来，主进程校验后再给渲染进程 */
+  | { t: 'td_pkt'; ep: string; d: string }
+  | { t: 'display_mm'; id: number; display: number; w: number; h: number; ptw: number; pth: number; builtin: boolean }
 
 export interface Rect {
   x: number
@@ -158,12 +165,81 @@ export interface Rect {
   height: number
 }
 
-/** 全局模式浮层要画的东西（屏幕坐标） */
-export interface OverlayState {
-  gaze: { x: number; y: number } | null
-  /** 眼睛去了视线不跟的那一侧：光环朝这个点滑走、边走边淡 */
-  exit?: { x: number; y: number } | null
-  focus: Rect | null
-  label?: string
-  mode: 'soft' | 'hard'
+// ---------- iPhone 原深感 ----------
+// 手机发来的数据报 = 32 位十六进制签名 + JSON；签名 = HMAC-SHA256(SHA256("lookask-td|设备ID|配对码"), JSON 原文) 的前 16 字节
+// JSON 里 t = 'f' 是一帧（约 60 帧/秒），t = 'hb' 是每秒一次的心跳；Mac 回 t = 'ack'
+
+export type Vec3 = [number, number, number]
+export type Quat = [number, number, number, number]
+
+/** 一帧原深感数据（坐标都在手机前置相机坐标系里，单位米） */
+export interface TdFrame {
+  v: number
+  dev: string
+  /** 手机端 App 这次启动的会话号 */
+  sid: number
+  seq: number
+  /** 手机单调时钟（秒） */
+  ts: number
+  /** Mac 收到的时间（Date.now，毫秒） */
+  rx: number
+  tracked: boolean
+  /** 脸在相机坐标系里的位置和朝向（ARFaceAnchor 换到相机坐标系） */
+  head?: { pos: Vec3; quat: Quat }
+  /** 左右眼相对脸的位置和朝向（leftEyeTransform / rightEyeTransform） */
+  eyeL?: { pos: Vec3; quat: Quat }
+  eyeR?: { pos: Vec3; quat: Quat }
+  /** lookAtPoint（脸坐标系） */
+  look?: Vec3
+  /** 眼睛、眉毛、下巴相关的表情系数 */
+  bs?: Record<string, number>
+  /** 重力方向（相机坐标系，单位向量）：用来定「上」，手机竖放横放都行 */
+  grav?: Vec3
+  /** 界面方向（仅供参考） */
+  orient?: string
+}
+
+export interface TdDeviceInfo {
+  dev: string
+  name: string
+  model?: string
+  paired: boolean
+  /** 配过对但签名对不上（手机上换过配对码） */
+  badCode?: boolean
+  /** 多少毫秒前收到过包 */
+  ago: number
+  /** Mac 这边实收帧率 */
+  fps: number
+  /** 最近几秒的丢包率 0~1 */
+  loss: number
+  tracked: boolean
+  /** 手机发热档位：0 正常 1 偏热 2 严重 3 过热 */
+  therm?: number
+  /** 手机端发送帧率 */
+  sendFps?: number
+}
+
+export interface TdStatus {
+  listening: boolean
+  port: number
+  /** Bonjour 上的名字（手机列表里显示的） */
+  name: string
+  error?: string
+  /** 正在用的那台手机 */
+  active: string | null
+  /** 最近一分钟收到过包的手机 */
+  devices: TdDeviceInfo[]
+  /** 配过对的全部手机（不在线的也列出来，方便取消配对） */
+  paired: Array<{ dev: string; name: string; at: number }>
+}
+
+/** 当前窗口所在显示器：物理尺寸（毫米）和逻辑尺寸（点） */
+export interface DisplayInfo {
+  id: number
+  mmW: number
+  mmH: number
+  ptW: number
+  ptH: number
+  /** 物理尺寸是系统报的（true）还是猜的 */
+  measured: boolean
 }

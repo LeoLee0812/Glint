@@ -39,12 +39,11 @@ const PATHS = {
       <path d="m7 9.5 3 2.5-3 2.5M12.5 15h4.5" />
     </>
   ),
-  window: (
+  phone: (
     <>
-      <rect x="2.5" y="4" width="19" height="16" rx="3" />
-      <path d="M2.5 8.5h19" />
-      <circle cx="5.5" cy="6.3" r="0.4" />
-      <circle cx="7.5" cy="6.3" r="0.4" />
+      <rect x="6.5" y="2.5" width="11" height="19" rx="2.6" />
+      <path d="M10.5 5h3" />
+      <circle cx="12" cy="18.2" r="0.5" />
     </>
   ),
   camera: (

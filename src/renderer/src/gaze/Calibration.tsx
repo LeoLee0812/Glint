@@ -432,7 +432,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
 /** 校准前的摆位提示：脸居中、远近合适。校准时的位置会被记住，之后偏了就按它提醒 */
 function PoseHint(): React.JSX.Element {
   const cur = useStore(gaze.pose).cur
-  let tip = '坐到你平时最舒服的位置再开始：之后头挪开了，LookAsk 会按这个位置提醒你挪回来'
+  let tip = '坐到你平时最舒服的位置再开始：之后头挪开了，Glint 会按这个位置提醒你挪回来'
   let bad = false
   if (!cur) {
     tip = '先让脸完整出现在画面里'

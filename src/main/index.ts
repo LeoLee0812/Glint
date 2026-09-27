@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  desktopCapturer,
   dialog,
   ipcMain,
   net,
@@ -14,17 +13,19 @@ import {
 } from 'electron'
 import { join, basename, extname, normalize } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import type { LlmRequest, OverlayState, Provider, Settings, JevQuestion, Rect } from '../shared/types'
+import { readFileSync, writeFileSync } from 'node:fs'
+import type { LlmRequest, Provider, Settings, JevQuestion, Rect } from '../shared/types'
 import { loadSettings, saveSettings, JEV_PRESETS } from './settings'
 import { startStream, abortStream, listModels, testProvider } from './llm'
 import { judge, jevUsage, flushJev } from './jev'
-import { startBridge, stopBridge, onBridge, sendBridge, requestBridge } from './bridge'
+import { startBridge, stopBridge, onBridge, sendBridge } from './bridge'
 import { createPty, writePty, resizePty, killPty, killAllPty } from './pty'
 import { generateAvatar, loadAvatar, clearAvatar } from './avatar'
+import { initTrueDepth, tdEnable, tdPair, tdUnpair, tdStatus, displayInfo } from './truedepth'
 
-app.setName('LookAsk')
+app.setName('Glint')
+// 改名前叫 LookAsk：用户数据（设置、校准、小人、配对）继续放在老目录，改名不丢数据
+app.setPath('userData', join(app.getPath('appData'), 'LookAsk'))
 // 测试用：LOOKASK_USER_DATA=<目录> 换一套用户数据（设置、校准、小人都分开存），能和已装好的 LookAsk 同时开
 if (process.env.LOOKASK_USER_DATA) app.setPath('userData', process.env.LOOKASK_USER_DATA)
 
@@ -59,9 +60,8 @@ function registerAppProtocol(): void {
 }
 
 let win: BrowserWindow | null = null
-let overlay: BrowserWindow | null = null
 let savedBounds: Rectangle | null = null
-let mode: 'normal' | 'calibration' | 'global' = 'normal'
+let mode: 'normal' | 'calibration' = 'normal'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
@@ -88,7 +88,7 @@ function pushBounds(): void {
   })
 }
 
-function loadRenderer(w: BrowserWindow, page: 'index' | 'overlay'): void {
+function loadRenderer(w: BrowserWindow, page: 'index'): void {
   if (isDev) w.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/${page}.html`)
   else w.loadURL(`lookask://app/${page}.html`)
 }
@@ -102,7 +102,7 @@ function createMainWindow(): void {
     height: wa.height,
     minWidth: 380,
     minHeight: 480,
-    title: 'LookAsk',
+    title: 'Glint 瞳问',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 13 },
     backgroundColor: '#ffffff',
@@ -124,8 +124,6 @@ function createMainWindow(): void {
   }
   win.on('closed', () => {
     win = null
-    overlay?.destroy()
-    overlay = null
   })
   if (isDev) {
     win.webContents.on('console-message', (e: any) => {
@@ -143,7 +141,6 @@ function createMainWindow(): void {
 
 function enterCalibration(): void {
   if (!win || mode === 'calibration') return
-  if (mode === 'global') exitGlobal()
   savedBounds = win.getBounds()
   mode = 'calibration'
   win.setAlwaysOnTop(true, 'screen-saver')
@@ -160,112 +157,6 @@ function exitCalibration(): void {
   if (savedBounds) win.setBounds(savedBounds)
   savedBounds = null
   setTimeout(pushBounds, 120)
-}
-
-// ---------- 全局模式：主窗口缩成右侧边栏，透明浮层画视线，左边可以是任何 App ----------
-
-function enterGlobal(): void {
-  if (!win || mode === 'global') return
-  if (mode === 'calibration') exitCalibration()
-  savedBounds = win.getBounds()
-  mode = 'global'
-  const d = screen.getDisplayMatching(win.getBounds())
-  const wa = d.workArea
-  const width = Math.min(480, Math.round(wa.width * 0.34))
-  win.setBounds({ x: wa.x + wa.width - width, y: wa.y, width, height: wa.height })
-  win.setAlwaysOnTop(true, 'floating')
-
-  overlay = new BrowserWindow({
-    x: d.bounds.x,
-    y: d.bounds.y,
-    width: d.bounds.width,
-    height: d.bounds.height,
-    transparent: true,
-    frame: false,
-    hasShadow: false,
-    focusable: false,
-    resizable: false,
-    movable: false,
-    skipTaskbar: true,
-    fullscreenable: false,
-    show: false,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      backgroundThrottling: false
-    }
-  })
-  overlay.setIgnoreMouseEvents(true)
-  overlay.setAlwaysOnTop(true, 'screen-saver')
-  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  // 不开内容保护：演示录屏时要能录到视线圈；截图给 OCR 前会先临时藏起浮层
-  loadRenderer(overlay, 'overlay')
-  overlay.once('ready-to-show', () => overlay?.showInactive())
-  setTimeout(pushBounds, 150)
-  // 第一次进全局模式时顺手触发录屏授权弹窗
-  if (systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
-    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => undefined)
-  }
-}
-
-function exitGlobal(): void {
-  if (!win || mode !== 'global') return
-  mode = 'normal'
-  overlay?.destroy()
-  overlay = null
-  win.setAlwaysOnTop(false)
-  if (savedBounds) win.setBounds(savedBounds)
-  savedBounds = null
-  setTimeout(pushBounds, 150)
-}
-
-// ---------- 截屏：全局模式下取视线处画面，给 OCR 和视觉模型 ----------
-
-async function captureScreenRect(rect: Rect): Promise<{ dataUrl: string; path: string } | { error: string }> {
-  // 明确拒绝过才拦；还没问过的话直接截一次，系统会弹授权框并把 LookAsk 加进列表
-  const status = systemPreferences.getMediaAccessStatus('screen')
-  if (status === 'denied' || status === 'restricted') {
-    return { error: 'screen_permission' }
-  }
-  const d = screen.getDisplayMatching({ x: Math.round(rect.x), y: Math.round(rect.y), width: 2, height: 2 })
-  const sf = d.scaleFactor
-  // 截图前先把视线圈和焦点框藏一帧，别被 OCR 和视觉模型看到
-  const ov = overlay && !overlay.isDestroyed() ? overlay : null
-  if (ov) {
-    ov.webContents.send('overlay:vis', false)
-    await new Promise((r) => setTimeout(r, 70))
-  }
-  let sources: Electron.DesktopCapturerSource[]
-  try {
-    sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: Math.round(d.bounds.width * sf), height: Math.round(d.bounds.height * sf) }
-    })
-  } finally {
-    if (ov && !ov.isDestroyed()) ov.webContents.send('overlay:vis', true)
-  }
-  const src = sources.find((s) => s.display_id === String(d.id)) || sources[0]
-  if (!src) return { error: 'no_source' }
-  const img = src.thumbnail
-  const size = img.getSize()
-  const kx = size.width / d.bounds.width
-  const ky = size.height / d.bounds.height
-  const crop = {
-    x: Math.max(0, Math.round((rect.x - d.bounds.x) * kx)),
-    y: Math.max(0, Math.round((rect.y - d.bounds.y) * ky)),
-    width: Math.round(rect.width * kx),
-    height: Math.round(rect.height * ky)
-  }
-  crop.width = Math.max(8, Math.min(crop.width, size.width - crop.x))
-  crop.height = Math.max(8, Math.min(crop.height, size.height - crop.y))
-  const cut = img.crop(crop)
-  const png = cut.toPNG()
-  const dir = join(tmpdir(), 'lookask')
-  mkdirSync(dir, { recursive: true })
-  const path = join(dir, `cap-${Date.now()}.png`)
-  writeFileSync(path, png)
-  return { dataUrl: `data:image/png;base64,${png.toString('base64')}`, path }
 }
 
 // ---------- IPC ----------
@@ -293,15 +184,10 @@ function registerIpc(): void {
   ipcMain.on('pty:kill', (_e, id: string) => killPty(id))
 
   ipcMain.on('bridge:send', (_e, cmd: Record<string, unknown>) => sendBridge(cmd))
-  ipcMain.handle('bridge:ocr', (_e, path: string, fast?: boolean) => requestBridge({ cmd: 'ocr', path, fast: !!fast }, 10000))
-  ipcMain.handle('bridge:ax', (_e, x: number, y: number) => requestBridge({ cmd: 'ax_at', x, y }, 3000))
-  ipcMain.handle('bridge:axPrompt', () => requestBridge({ cmd: 'ax_prompt' }, 3000))
 
-  ipcMain.handle('win:mode', (_e, next: 'normal' | 'calibration' | 'global') => {
+  ipcMain.handle('win:mode', (_e, next: 'normal' | 'calibration') => {
     if (next === 'calibration') enterCalibration()
-    else if (next === 'global') enterGlobal()
-    else if (mode === 'calibration') exitCalibration()
-    else if (mode === 'global') exitGlobal()
+    else exitCalibration()
     return mode
   })
   ipcMain.handle('win:bounds', () => {
@@ -320,15 +206,18 @@ function registerIpc(): void {
     win?.show()
     win?.focus()
   })
-  ipcMain.on('overlay:update', (_e, s: OverlayState) => {
-    if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:state', s)
-  })
+
+  // iPhone 原深感：开关监听、配对、状态、显示器物理尺寸
+  ipcMain.handle('td:enable', (_e, reason: 'source' | 'pairing', on: boolean) => tdEnable(reason, on))
+  ipcMain.handle('td:pair', (_e, dev: string, code: string) => tdPair(dev, code))
+  ipcMain.handle('td:unpair', (_e, dev: string) => tdUnpair(dev))
+  ipcMain.handle('td:status', () => tdStatus())
+  ipcMain.handle('td:display', () => displayInfo(win))
 
   ipcMain.handle('avatar:get', () => loadAvatar())
   ipcMain.handle('avatar:generate', (_e, photo: string) => generateAvatar(photo))
   ipcMain.handle('avatar:clear', () => clearAvatar())
 
-  ipcMain.handle('screen:capture', (_e, rect: Rect) => captureScreenRect(rect))
   // 截主窗口里的一块（窗口坐标），给 Markdown / 终端 / 对话区的「截图问」用
   ipcMain.handle('win:capture', async (_e, rect: Rect) => {
     if (!win) return null
@@ -343,18 +232,15 @@ function registerIpc(): void {
   })
   ipcMain.handle('perm:status', () => ({
     camera: systemPreferences.getMediaAccessStatus('camera'),
-    microphone: systemPreferences.getMediaAccessStatus('microphone'),
-    screen: systemPreferences.getMediaAccessStatus('screen')
+    microphone: systemPreferences.getMediaAccessStatus('microphone')
   }))
-  ipcMain.handle('perm:openSettings', async (_e, pane: 'screen' | 'accessibility' | 'camera' | 'microphone' | 'speech') => {
-    // 从没申请过的权限，系统设置列表里根本没有 LookAsk，得先弹系统授权框
+  ipcMain.handle('perm:openSettings', async (_e, pane: 'camera' | 'microphone' | 'speech') => {
+    // 从没申请过的权限，系统设置列表里根本没有 Glint，得先弹系统授权框
     if ((pane === 'microphone' || pane === 'camera') && systemPreferences.getMediaAccessStatus(pane) === 'not-determined') {
       await systemPreferences.askForMediaAccess(pane).catch(() => false)
       return
     }
     const map: Record<string, string> = {
-      screen: 'Privacy_ScreenCapture',
-      accessibility: 'Privacy_Accessibility',
       camera: 'Privacy_Camera',
       microphone: 'Privacy_Microphone',
       speech: 'Privacy_SpeechRecognition'
@@ -407,7 +293,9 @@ if (!app.requestSingleInstanceLock()) {
       ['media', 'clipboard-read', 'clipboard-sanitized-write', 'fullscreen'].includes(permission)
     )
     registerIpc()
-    onBridge((e) => send('bridge:event', e))
+    // 原深感原始数据报（60 帧/秒）不直接给渲染进程，由 truedepth.ts 验签后以 td:frame 推送
+    onBridge((e) => e.t !== 'td_pkt' && send('bridge:event', e))
+    initTrueDepth(send)
     // 测试用：LOOKASK_NO_BRIDGE=1 不拉原生助手，免得和正在用的 LookAsk 抢手柄
     if (!process.env.LOOKASK_NO_BRIDGE) startBridge()
     createMainWindow()

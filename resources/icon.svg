@@ -1,39 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1b2433"/>
-      <stop offset="1" stop-color="#0a0d12"/>
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9ecf1"/>
     </linearGradient>
-    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#99f6e4"/>
-      <stop offset="1" stop-color="#14b8a6"/>
+    <linearGradient id="stem" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2c30"/>
+      <stop offset="1" stop-color="#111114"/>
     </linearGradient>
-    <radialGradient id="cap" cx="0.42" cy="0.38" r="0.7">
-      <stop offset="0" stop-color="#3a4557"/>
-      <stop offset="1" stop-color="#11161f"/>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6fd8ff"/>
+      <stop offset="1" stop-color="#0a84ff"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.45" stop-color="#1eaaf0" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#1eaaf0" stop-opacity="0"/>
     </radialGradient>
-    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="14" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <radialGradient id="inner" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#bfe8ff" stop-opacity="0.9"/>
+    </radialGradient>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000" flood-opacity="0.22"/>
+    </filter>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0a3a66" flood-opacity="0.25"/>
     </filter>
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="#2a3446" stroke-width="4"/>
-  <!-- 眼睛轮廓 -->
-  <path d="M190 512 C 300 330, 724 330, 834 512 C 724 694, 300 694, 190 512 Z" fill="none" stroke="url(#teal)" stroke-width="30" stroke-linejoin="round" filter="url(#glow)"/>
-  <!-- 虹膜 = 摇杆底座 -->
-  <circle cx="512" cy="512" r="138" fill="#0d1219" stroke="url(#teal)" stroke-width="22"/>
-  <!-- 摇杆帽 -->
-  <circle cx="512" cy="512" r="96" fill="url(#cap)"/>
-  <circle cx="512" cy="512" r="96" fill="none" stroke="#56627a" stroke-width="6"/>
-  <circle cx="512" cy="512" r="62" fill="none" stroke="#2b3444" stroke-width="10"/>
-  <!-- 焦点（琥珀色） -->
-  <circle cx="546" cy="478" r="26" fill="#facc15" filter="url(#glow)"/>
-  <!-- 被选中的一行字 -->
-  <rect x="372" y="742" width="280" height="30" rx="10" fill="#facc15" opacity="0.92"/>
-  <rect x="300" y="742" width="52" height="30" rx="10" fill="#334155"/>
-  <rect x="672" y="742" width="52" height="30" rx="10" fill="#334155"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.9"/>
+  <!-- ı 的竖：墨色圆头 -->
+  <rect x="459" y="470" width="106" height="330" rx="53" fill="url(#stem)" filter="url(#soft)"/>
+  <!-- i 上的点 = 视线光环 -->
+  <circle cx="512" cy="330" r="150" fill="url(#halo)"/>
+  <circle cx="512" cy="330" r="84" fill="url(#inner)"/>
+  <circle cx="512" cy="330" r="84" fill="none" stroke="url(#ring)" stroke-width="26"/>
+  <circle cx="512" cy="330" r="84" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2.5"/>
+  <!-- 一点高光（glint） -->
+  <path d="M478 296 q4 -26 10 0 q26 4 0 10 q-6 26 -10 0 q-26 -6 0 -10 z" fill="#ffffff" opacity="0.95"/>
 </svg>

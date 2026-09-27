@@ -28,7 +28,11 @@ export function onBridge(fn: Listener): void {
 
 function dispatch(e: BridgeEvent): void {
   const id = (e as any).id
-  if (typeof id === 'number' && pending.has(id) && (e.t === 'ocr' || e.t === 'ax' || (e as any).t === 'pong' || (e as any).t === 'ax_trust')) {
+  if (
+    typeof id === 'number' &&
+    pending.has(id) &&
+    (e.t === 'display_mm' || (e as any).t === 'pong')
+  ) {
     pending.get(id)!(e)
     pending.delete(id)
   }
@@ -97,7 +101,7 @@ export function sendBridge(cmd: Record<string, unknown>): void {
   }
 }
 
-/** 发命令并等对应 id 的回包（OCR / 取词），超时返回 null */
+/** 发命令并等对应 id 的回包（如 display_mm），超时返回 null */
 export function requestBridge<T = any>(cmd: Record<string, unknown>, timeoutMs = 8000): Promise<T | null> {
   return new Promise((resolve) => {
     if (!child) return resolve(null)

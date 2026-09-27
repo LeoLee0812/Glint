@@ -7,7 +7,7 @@ import type { Settings, Provider } from '../shared/types'
 // 设置存在 ~/Library/Application Support/LookAsk/settings.json（权限 600，只有本人可读）
 // Key 只存本机，不进仓库
 
-const DEFAULT_SYSTEM_PROMPT = `你是 LookAsk 的阅读副驾。用户用眼动追踪 + Joy-Con 手柄指向了屏幕上的内容，「当前焦点」就是用户此刻正在看的东西。
+const DEFAULT_SYSTEM_PROMPT = `你是 Glint 瞳问的阅读副驾。用户用眼动追踪 + Joy-Con 手柄指向了屏幕上的内容，「当前焦点」就是用户此刻正在看的东西。
 回答规则：
 - 先给一句话结论，再按需展开；默认简短，用户追问再深入
 - 默认用简体中文；专业术语第一次出现时附英文原词
@@ -93,7 +93,7 @@ export function defaultSettings(): Settings {
     avatar: { providerId: 'openlux', model: 'gpt-image-2', quality: 'medium', show: true },
     jev: { baseUrl: 'https://api.typesafe.ai', apiKey: '', model: 'jev-latest', dailyTokenCap: 60000 },
     jevMode: false,
-    gaze: { cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7 },
+    gaze: { source: 'webcam', tdMount: 'bottom', cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7 },
     terminal: { cwd: homedir(), shell: process.env.SHELL || '/bin/zsh' },
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     leftRatio: 0.62

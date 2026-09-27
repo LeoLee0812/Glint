@@ -5,7 +5,7 @@ import { gaze } from '../gaze/engine'
 import { ask, abort, chatStore, addNote, popFork } from '../chat/chatStore'
 import { activeDoc, cycleDoc } from '../panes/docs'
 import { terminals, KEYS, type TermHandle } from '../panes/TerminalPane'
-import { la, uiStore, settingsStore, updateSettings, toast, rumble, setUiMode, screenToClient } from '../appState'
+import { la, uiStore, settingsStore, updateSettings, toast, rumble, screenToClient } from '../appState'
 import { onDwell, setSuggestHandler, setTerminalAlertHandler, setFactHandler, jevEnabled, looksLikePermissionPrompt, riskGate } from '../jev/jevBrain'
 import { docsStore } from '../panes/docs'
 
@@ -26,7 +26,7 @@ function sidePane(): PaneAdapter | null {
 /** 左边当前是终端，且视线跟着左边 → 十字键当方向键用 */
 function activeTerminal(): TermHandle | null {
   const d = activeDoc()
-  if (!d || d.kind !== 'terminal' || uiStore.get().mode === 'global' || uiStore.get().side === 'right') return null
+  if (!d || d.kind !== 'terminal' || uiStore.get().side === 'right') return null
   const fp = focus.state.get().paneId
   if (sideOfPane(fp) === 'right') return null
   return terminals.get(d.id) || null
@@ -103,8 +103,8 @@ la.bridge.onEvent((e) => {
   else if (e.state === 'error') {
     chatStore.patch({ asr: { active: false, text: '', target: asrTarget } })
     const tips: Record<string, [string, 'speech' | 'microphone' | null]> = {
-      speech_denied: ['语音识别没授权：系统设置 → 隐私与安全性 → 语音识别，给 LookAsk 打开', 'speech'],
-      mic_denied: ['麦克风没授权：系统设置 → 隐私与安全性 → 麦克风，给 LookAsk 打开', 'microphone'],
+      speech_denied: ['语音识别没授权：系统设置 → 隐私与安全性 → 语音识别，给 Glint 打开', 'speech'],
+      mic_denied: ['麦克风没授权：系统设置 → 隐私与安全性 → 麦克风，给 Glint 打开', 'microphone'],
       recognizer_unavailable: ['系统语音识别暂不可用（中文听写需要联网下载一次模型）', null]
     }
     const [msg, pane] = tips[e.error || ''] || [`语音出错：${e.error}`, null]
@@ -152,10 +152,6 @@ function onButton(e: ButtonEvent): void {
   if (e.long) {
     if (e.btn === 'Minus') uiStore.patch({ showCalibration: true, calibrationKind: 'full' })
     if (e.btn === 'Plus') toggleJev()
-    if (e.btn === 'Home' && uiStore.get().mode === 'global') {
-      setUiMode('normal')
-      toast('已回到普通模式', 'info')
-    }
     return
   }
 
@@ -270,7 +266,7 @@ let autoCooldown = 0
 
 function scrollTarget(): PaneAdapter | null {
   const p = focus.activePane()
-  if (p && p.id !== 'screen') return p
+  if (p) return p
   return sidePane()
 }
 
@@ -312,7 +308,7 @@ function tick(t: number): void {
 
 /** 眼动翻页：视线停在正文底部 2 秒，自动往下翻半屏 */
 function autoScroll(t: number): void {
-  if (!settingsStore.get().s?.gaze.autoScroll || uiStore.get().mode === 'global') return
+  if (!settingsStore.get().s?.gaze.autoScroll) return
   const sm = gaze.lastSample?.smooth
   if (!sm || !gaze.lastSample?.raw) {
     bottomSince = 0

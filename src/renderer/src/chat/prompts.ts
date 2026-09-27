@@ -19,7 +19,6 @@ const SOURCE_LABEL: Record<FocusContext['source'], string> = {
   markdown: 'Markdown 文档',
   pdf: 'PDF 论文',
   terminal: '终端',
-  screen: '屏幕上的其他应用',
   chat: '你之前的回答'
 }
 

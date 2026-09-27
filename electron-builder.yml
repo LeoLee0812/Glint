@@ -1,6 +1,6 @@
-# LookAsk 打包配置：只出 Apple 芯片的 dmg；没有开发者证书，打完包做 ad-hoc 签名
+# Glint 瞳问打包配置：只出 Apple 芯片的 dmg；没有开发者证书，打完包做 ad-hoc 签名
 appId: com.leo.lookask
-productName: LookAsk
+productName: Glint
 copyright: Copyright © 2026 Leo
 directories:
   buildResources: resources
@@ -30,13 +30,15 @@ mac:
   gatekeeperAssess: false
   minimumSystemVersion: '13.0'
   extendInfo:
-    NSCameraUsageDescription: LookAsk 用摄像头做眼动追踪：画面只在本机实时处理，不录制、不上传。
+    NSCameraUsageDescription: Glint 用摄像头做眼动追踪：画面只在本机实时处理，不录制、不上传。
     NSMicrophoneUsageDescription: 按住 Joy-Con 扳机说话时，需要用麦克风把你的问题转成文字。
-    NSSpeechRecognitionUsageDescription: LookAsk 用系统语音识别把你说的话转成文字，Apple 芯片上在本机完成。
-    NSAppleEventsUsageDescription: 全局模式下读取其他应用里的文字，给 AI 当上下文。
+    NSSpeechRecognitionUsageDescription: Glint 用系统语音识别把你说的话转成文字，Apple 芯片上在本机完成。
+    NSLocalNetworkUsageDescription: 接收 iPhone 上 LookAskEye 发来的原深感眼动数据（只在本地网络里传，不出局域网）。
+    NSBonjourServices:
+      - _lookask._udp
 afterPack: scripts/after-pack.cjs
 dmg:
-  title: LookAsk ${version}
+  title: Glint ${version}
   writeUpdateInfo: false
   window:
     width: 540

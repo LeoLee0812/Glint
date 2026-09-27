@@ -10,7 +10,7 @@ export interface WinBounds {
   display: Rect
   workArea: Rect
   scale: number
-  mode: 'normal' | 'calibration' | 'global'
+  mode: 'normal' | 'calibration'
 }
 
 export const settingsStore = createStore<{ s: Settings | null }>({ s: null })
@@ -51,13 +51,15 @@ export function clientToScreen(x: number, y: number): { x: number; y: number } {
   return { x: x + c.x, y: y + c.y }
 }
 
-export type UiMode = 'normal' | 'calibration' | 'global'
-/** 视线跟哪一边：左 = 阅读内容（全局模式下是整块屏幕），右 = AI 回答区 */
+export type UiMode = 'normal' | 'calibration'
+/** 视线跟哪一边：左 = 阅读内容，右 = AI 回答区 */
 export type Side = 'left' | 'right'
 export const uiStore = createStore<{
   mode: UiMode
   side: Side
   showSettings: boolean
+  /** 打开设置时直接跳到哪一页（比如发现 iPhone 待配对时跳到「眼动」） */
+  settingsTab: 'gaze' | null
   showHelp: boolean
   showCalibration: boolean
   calibrationKind: 'full' | 'validate' | 'drift'
@@ -69,6 +71,7 @@ export const uiStore = createStore<{
   mode: 'normal',
   side: 'left',
   showSettings: false,
+  settingsTab: null,
   showHelp: false,
   showCalibration: false,
   calibrationKind: 'full',

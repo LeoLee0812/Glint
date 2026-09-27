@@ -1,8 +1,8 @@
 {
   "name": "lookask",
-  "productName": "LookAsk",
+  "productName": "Glint",
   "version": "0.1.0",
-  "description": "看哪问哪：眼动追踪 + Joy-Con 的 AI 阅读副驾",
+  "description": "Glint 瞳问：眼动追踪 + Joy-Con 的 AI 阅读副驾，所见即所问",
   "main": "out/main/index.js",
   "author": "Leo",
   "license": "UNLICENSED",
@@ -13,6 +13,8 @@
     "build:native": "bash native/build.sh",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist": "bash native/build.sh && electron-vite build && electron-builder --mac dmg --arm64",
+    "test:truedepth": "node scripts/test-truedepth.mjs",
+    "fake-iphone": "node scripts/fake-truedepth.mjs",
     "postinstall": "install-electron && node scripts/fetch-assets.mjs && electron-builder install-app-deps"
   },
   "dependencies": {
@@ -35,6 +37,7 @@
     "katex": "^0.18.9",
     "markdown-it": "^15.0.2",
     "pdfjs-dist": "^6.3.289",
+    "playwright-core": "^1.63.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "~5.9.3",

@@ -4,12 +4,11 @@ import { docsStore, activate, closeDoc, openFile, openViaDialog, newTerminal, ty
 import { MarkdownPane } from './MarkdownPane'
 import { PdfPane } from './PdfPane'
 import { TerminalPane } from './TerminalPane'
-import { WindowPane } from './WindowPane'
 import { Icon, type IconName } from '../ui/Icon'
 
 // 左侧：标签页 + 拖放打开文件
 
-const ICON: Record<Doc['kind'], IconName> = { md: 'doc', pdf: 'book', terminal: 'terminal', window: 'window' }
+const ICON: Record<Doc['kind'], IconName> = { md: 'doc', pdf: 'book', terminal: 'terminal' }
 
 function Pane({ doc, active }: { doc: Doc; active: boolean }): React.JSX.Element {
   switch (doc.kind) {
@@ -19,8 +18,6 @@ function Pane({ doc, active }: { doc: Doc; active: boolean }): React.JSX.Element
       return <PdfPane doc={doc} active={active} />
     case 'terminal':
       return <TerminalPane doc={doc} active={active} />
-    case 'window':
-      return <WindowPane />
   }
 }
 
@@ -52,7 +49,7 @@ export function LeftPane(): React.JSX.Element {
               <Icon name={ICON[d.kind]} />
             </span>
             <span className="tab-title">{d.title}</span>
-            {d.id !== 'welcome' && d.id !== 'window' && (
+            {d.id !== 'welcome' && (
               <button
                 className="tab-x"
                 onClick={(e) => {

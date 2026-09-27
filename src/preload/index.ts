@@ -4,10 +4,12 @@ import type {
   JevQuestion,
   JevResult,
   JevUsage,
+  DisplayInfo,
+  TdFrame,
+  TdStatus,
   LlmDelta,
   LlmDone,
   LlmRequest,
-  OverlayState,
   Provider,
   Rect,
   Settings
@@ -50,26 +52,25 @@ const api = {
   },
   bridge: {
     send: (cmd: Record<string, unknown>) => ipcRenderer.send('bridge:send', cmd),
-    ocr: (path: string, fast?: boolean) => ipcRenderer.invoke('bridge:ocr', path, fast),
-    ax: (x: number, y: number) => ipcRenderer.invoke('bridge:ax', x, y),
-    axPrompt: () => ipcRenderer.invoke('bridge:axPrompt'),
     onEvent: (fn: (e: BridgeEvent) => void) => on('bridge:event', fn)
   },
   win: {
-    setMode: (m: 'normal' | 'calibration' | 'global'): Promise<string> => ipcRenderer.invoke('win:mode', m),
+    setMode: (m: 'normal' | 'calibration'): Promise<string> => ipcRenderer.invoke('win:mode', m),
     requestBounds: () => ipcRenderer.invoke('win:bounds'),
     onBounds: (fn: (b: WinBounds) => void) => on('win:bounds', fn),
     toggleVisible: () => ipcRenderer.send('win:toggleVisible'),
     capture: (rect: Rect): Promise<string | null> => ipcRenderer.invoke('win:capture', rect),
     focus: () => ipcRenderer.send('win:focus')
   },
-  overlay: {
-    update: (s: OverlayState) => ipcRenderer.send('overlay:update', s),
-    onState: (fn: (s: OverlayState) => void) => on('overlay:state', fn),
-    onVisible: (fn: (v: boolean) => void) => on('overlay:vis', fn)
-  },
-  screen: {
-    capture: (rect: Rect): Promise<{ dataUrl: string; path: string } | { error: string }> => ipcRenderer.invoke('screen:capture', rect)
+  truedepth: {
+    /** 开 / 关收包：source = 选了原深感输入源，pairing = 设置里正在配对 */
+    enable: (reason: 'source' | 'pairing', on: boolean): Promise<TdStatus> => ipcRenderer.invoke('td:enable', reason, on),
+    pair: (dev: string, code: string): Promise<{ ok: boolean; error?: string; name?: string }> => ipcRenderer.invoke('td:pair', dev, code),
+    unpair: (dev: string): Promise<void> => ipcRenderer.invoke('td:unpair', dev),
+    status: (): Promise<TdStatus> => ipcRenderer.invoke('td:status'),
+    display: (): Promise<DisplayInfo> => ipcRenderer.invoke('td:display'),
+    onFrame: (fn: (f: TdFrame) => void) => on('td:frame', fn),
+    onStatus: (fn: (s: TdStatus) => void) => on('td:status', fn)
   },
   avatar: {
     get: (): Promise<string | null> => ipcRenderer.invoke('avatar:get'),
@@ -78,8 +79,8 @@ const api = {
     clear: (): Promise<void> => ipcRenderer.invoke('avatar:clear')
   },
   perm: {
-    status: (): Promise<{ camera: string; microphone: string; screen: string }> => ipcRenderer.invoke('perm:status'),
-    openSettings: (pane: 'screen' | 'accessibility' | 'camera' | 'microphone' | 'speech') => ipcRenderer.invoke('perm:openSettings', pane)
+    status: (): Promise<{ camera: string; microphone: string }> => ipcRenderer.invoke('perm:status'),
+    openSettings: (pane: 'camera' | 'microphone' | 'speech') => ipcRenderer.invoke('perm:openSettings', pane)
   },
   file: {
     open: () => ipcRenderer.invoke('file:open'),
@@ -94,7 +95,7 @@ export interface WinBounds {
   display: Rect
   workArea: Rect
   scale: number
-  mode: 'normal' | 'calibration' | 'global'
+  mode: 'normal' | 'calibration'
 }
 
 export type LookAskApi = typeof api

@@ -1,5 +1,5 @@
 import { clientToScreen, screenToClient, la, toast, uiStore, type Side } from '../appState'
-import { focus, gazeUsable, mousePos, sideRegion, sideOfPane } from './focus'
+import { focus, gazeUsable, mousePos, sideOfPane } from './focus'
 import { gaze } from '../gaze/engine'
 import { activeDoc } from '../panes/docs'
 import type { Box, FocusContext, SourceKind } from './types'
@@ -29,9 +29,8 @@ function contains(b: Box, x: number, y: number): boolean {
   return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
 }
 
-/** 截哪一块（屏幕坐标）：左边 = 阅读区（不含标签栏），右边 = 回答区 + 解释窗口，全局模式左边 = 侧边栏以外的整块屏幕 */
+/** 截哪一块（屏幕坐标）：左边 = 阅读区（不含标签栏），右边 = 回答区 + 解释窗口 */
 function captureRegion(side: Side): Box | null {
-  if (uiStore.get().mode === 'global' && side === 'left') return sideRegion('left')
   const sels = side === 'left' ? ['.left-body'] : ['.msgs', '.fork']
   const rects = sels
     .map((q) => document.querySelector(q)?.getBoundingClientRect())
@@ -48,7 +47,6 @@ function focusBoxScreen(): Box | null {
   const sel = focus.state.get().sel
   const u = sel ? unionBox(sel.rects) : null
   if (!u) return null
-  if (sel!.space === 'screen') return u
   const p = clientToScreen(u.x, u.y)
   return { x: p.x, y: p.y, width: u.width, height: u.height }
 }
@@ -73,7 +71,7 @@ function pickCircle(region: Box, side: Side): Circle | null {
     return { cx: fb.x + fb.width / 2, cy: fb.y + fb.height / 2, rx: Math.min(260, fb.width / 2 + 16), ry: Math.min(150, fb.height / 2 + 14), from: 'soft' }
   }
   // 4. 鼠标：没有眼动时的兜底
-  const m = uiStore.get().mode === 'global' ? null : mousePos()
+  const m = mousePos()
   if (m) {
     const p = clientToScreen(m.x, m.y)
     if (contains(region, p.x, p.y)) return { cx: p.x, cy: p.y, rx: 50, ry: 50, from: 'mouse' }
@@ -81,21 +79,8 @@ function pickCircle(region: Box, side: Side): Circle | null {
   return null
 }
 
-/** 截图：主窗口里的截之前先把视线圈、焦点框、小人藏两帧；全局模式的屏幕由主进程截（它会先藏浮层） */
-async function grab(region: Box, side: Side): Promise<string | null> {
-  if (uiStore.get().mode === 'global' && side === 'left') {
-    const r = await la.screen.capture(region)
-    if ('error' in r) {
-      if (r.error === 'screen_permission') {
-        toast('截整块屏幕要「录屏与系统录音」权限：去系统设置里给 LookAsk 打开', 'warn', {
-          ttl: 9000,
-          action: { label: '打开设置', run: () => la.perm.openSettings('screen') }
-        })
-      }
-      return null
-    }
-    return r.dataUrl
-  }
+/** 截图：截之前先把视线圈、焦点框、小人藏两帧 */
+async function grab(region: Box): Promise<string | null> {
   const c = screenToClient(region.x, region.y)
   uiStore.patch({ capturing: true })
   try {
@@ -148,7 +133,6 @@ const KIND_LABEL: Partial<Record<string, string>> = { pdf: 'PDF', md: 'Markdown'
 /** 截的是哪一块，给提示词和气泡用 */
 function describe(side: Side): { region: string; source: SourceKind; docTitle: string } {
   if (side === 'right') return { region: '右侧 AI 回答区', source: 'chat', docTitle: '右侧对话' }
-  if (uiStore.get().mode === 'global') return { region: '屏幕（正在用的 App）', source: 'screen', docTitle: '屏幕' }
   const d = activeDoc()
   if (d?.kind === 'terminal') return { region: '左侧终端（多半在跑 Qwen Code）', source: 'terminal', docTitle: d.title }
   const k = d ? KIND_LABEL[d.kind] : undefined
@@ -176,7 +160,7 @@ export async function snapshot(): Promise<FocusContext | null> {
     (circle.from === 'hard' ||
       circle.from === 'soft' ||
       Math.hypot(Math.max(fb.x - circle.cx, 0, circle.cx - fb.x - fb.width), Math.max(fb.y - circle.cy, 0, circle.cy - fb.y - fb.height)) < circle.rx)
-  const [raw, near] = await Promise.all([grab(region, side), textNear && uiStore.get().mode !== 'global' ? focus.context() : Promise.resolve(null)])
+  const [raw, near] = await Promise.all([grab(region), textNear ? focus.context() : Promise.resolve(null)])
   if (!raw) {
     toast('截图失败了，再按一次试试', 'warn')
     return null

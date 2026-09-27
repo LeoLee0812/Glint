@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store'
 import { uiStore, settingsStore, loadSettingsIntoStore, updateSettings, toast } from './appState'
 import { gaze } from './gaze/engine'
-import { panes } from './focus/focus'
-import { createScreenAdapter } from './focus/screenAdapter'
 import { TopBar } from './ui/TopBar'
 import { LeftPane } from './panes/LeftPane'
 import { ChatPane } from './chat/ChatPane'
@@ -23,7 +21,6 @@ export default function App(): React.JSX.Element {
   const dragging = useRef(false)
 
   useEffect(() => {
-    const off = panes.register(createScreenAdapter())
     loadAvatar().catch(() => undefined)
     loadSettingsIntoStore().then((st) => {
       setRatio(st.leftRatio || 0.62)
@@ -39,7 +36,6 @@ export default function App(): React.JSX.Element {
         })
       }
     })
-    return off
   }, [])
 
   useEffect(() => {
@@ -64,19 +60,15 @@ export default function App(): React.JSX.Element {
     }
   }, [])
 
-  const global = ui.mode === 'global'
-
   return (
     <div className={`app mode-${ui.mode} side-${ui.side} ${ui.capturing ? 'capturing' : ''}`}>
       <TopBar />
-      <main className="split" style={{ gridTemplateColumns: global ? '1fr' : `${ratio}fr 6px ${1 - ratio}fr` }}>
-        {/* 全局模式只是藏起来不卸载，终端里的会话不能断 */}
-        <div className="left-wrap" style={{ display: global ? 'none' : 'flex' }}>
+      <main className="split" style={{ gridTemplateColumns: `${ratio}fr 6px ${1 - ratio}fr` }}>
+        <div className="left-wrap">
           <LeftPane />
         </div>
         <div
           className="splitter"
-          style={{ display: global ? 'none' : 'block' }}
           onMouseDown={() => {
             dragging.current = true
             document.body.classList.add('resizing')
