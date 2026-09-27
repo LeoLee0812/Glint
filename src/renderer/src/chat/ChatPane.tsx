@@ -1,16 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { chatStore, ask, abort, clearChat, removeMsg, exportChat, type ChatMsg } from './chatStore'
+import { chatStore, ask, abort, clearChat, removeMsg, exportChat, popFork, closeFork, type ChatMsg, type ForkCard } from './chatStore'
 import { renderMarkdown, renderStreaming } from './markdown'
 import { focus, panes } from '../focus/focus'
 import { DomAdapter, ElementBlocks } from '../focus/domAdapter'
-import { GRAN_LABEL } from '../focus/types'
+import { GRAN_LABEL, unionBox } from '../focus/types'
 import { settingsStore, updateSettings, la, toast, uiStore, setUiMode } from '../appState'
 import { openDoc } from '../panes/docs'
 import { JevPanel } from '../jev/JevPanel'
 import { JevBadges } from '../jev/JevBadges'
+import { Icon } from '../ui/Icon'
 
 // 右侧对话区：焦点卡片 + 快捷动作 + 流式回答；回答本身也能被眼睛「看中」再追问
+// 右侧模式（右手柄 +）下追问回答里的某一处，解释不塞进主对话，而是在下面裂变出一个解释窗口，可以一层层往下问
+
+/** 文本节点往上找带某个 data 属性的条目（消息 / 解释卡片），给焦点上下文当 ref */
+function refOf(attr: 'mid' | 'card') {
+  return (n: Node): string | undefined => {
+    const el = n.nodeType === 1 ? (n as Element) : n.parentElement
+    return (el?.closest(`[data-${attr}]`) as HTMLElement | null)?.dataset[attr] || undefined
+  }
+}
 
 function ModelPicker(): React.JSX.Element | null {
   const s = useStore(settingsStore).s
@@ -39,13 +49,21 @@ function ModelPicker(): React.JSX.Element | null {
 
 function FocusChip(): React.JSX.Element {
   const f = useStore(focus.state)
+  const side = useStore(uiStore).side
   if (f.mode === 'none' || !f.sel) {
-    return <div className="focus-chip empty">没有焦点：看向左边的内容，或推一下右摇杆（⌥ + 方向键）</div>
+    return (
+      <div className="focus-chip empty">
+        {side === 'right' ? '右侧模式：看着回答里不懂的地方按 A，解释会往下裂变出一个窗口（− 回左边）' : '没有焦点：看向左边的内容，或推一下右摇杆（⌥ + 方向键）'}
+      </div>
+    )
   }
   const text = f.sel.text.replace(/\s+/g, ' ')
   return (
     <div className={`focus-chip ${f.mode}`}>
-      <span className="fc-tag">{f.mode === 'hard' ? '🎯' : '👁'} {GRAN_LABEL[f.gran]}</span>
+      <span className="fc-tag">
+        <Icon name={f.mode === 'hard' ? 'scope' : 'eye'} />
+        {GRAN_LABEL[f.gran]}
+      </span>
       <span className="fc-text">{text ? (text.length > 80 ? text.slice(0, 80) + '…' : text) : f.sel.space === 'screen' ? '（屏幕区域，发问时再截图识别）' : ''}</span>
     </div>
   )
@@ -54,12 +72,13 @@ function FocusChip(): React.JSX.Element {
 function UserMsg({ m }: { m: ChatMsg }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   return (
-    <div className="msg user">
+    <div className="msg user" data-mid={m.id}>
       <div className="bubble msg-plain">{m.text}</div>
       {m.ctx && (m.ctx.selection || m.ctx.paragraph) && (
         <div className="ctx-quote" onClick={() => setOpen((o) => !o)}>
           <div className="cq-head">
-            📍 {m.ctx.docTitle}
+            <Icon name="pin" />
+            {m.ctx.docTitle}
             {m.ctx.location ? ` · ${m.ctx.location}` : ''} · {GRAN_LABEL[m.ctx.gran]}
           </div>
           <div className={`cq-body ${open ? 'open' : ''}`}>{m.ctx.selection || m.ctx.paragraph}</div>
@@ -74,7 +93,7 @@ function UserMsg({ m }: { m: ChatMsg }): React.JSX.Element {
 function BotMsg({ m, onRetry }: { m: ChatMsg; onRetry: () => void }): React.JSX.Element {
   const html = useMemo(() => (m.status === 'streaming' ? renderStreaming(m.text) : renderMarkdown(m.text)), [m.text, m.status])
   return (
-    <div className={`msg bot ${m.status}`}>
+    <div className={`msg bot ${m.status}`} data-mid={m.id}>
       {m.reasoning && m.status === 'streaming' && !m.text && <div className="thinking">思考中… {m.reasoning.slice(-80)}</div>}
       {m.status === 'streaming' && !m.text && !m.reasoning && <div className="thinking">正在看你盯着的内容…</div>}
       <div className="md-doc msg-md" dangerouslySetInnerHTML={{ __html: html }} />
@@ -105,12 +124,116 @@ function BotMsg({ m, onRetry }: { m: ChatMsg; onRetry: () => void }): React.JSX.
 
 function NoteMsg({ m }: { m: ChatMsg }): React.JSX.Element {
   return (
-    <div className="msg note">
+    <div className="msg note" data-mid={m.id}>
       <div className="note-body">{m.text}</div>
       {m.jev && <JevBadges traces={m.jev} />}
       <button className="link" onClick={() => removeMsg(m.id)}>
         忽略
       </button>
+    </div>
+  )
+}
+
+function ForkCardView({ c, depth }: { c: ForkCard; depth: number }): React.JSX.Element {
+  const a = c.ans
+  const html = useMemo(() => (a.status === 'streaming' ? renderStreaming(a.text) : renderMarkdown(a.text)), [a.text, a.status])
+  return (
+    <div className={`fork-card ${a.status}`} data-card={c.id}>
+      <div className="fork-q focus-skip">
+        <span className="fork-depth">{depth + 1}</span>
+        <span className="ellipsis">{c.ask.text}</span>
+      </div>
+      {c.ask.image && <img className="ctx-img" src={c.ask.image} alt="截图" />}
+      {a.reasoning && a.status === 'streaming' && !a.text && <div className="thinking">思考中… {a.reasoning.slice(-80)}</div>}
+      {a.status === 'streaming' && !a.text && !a.reasoning && <div className="thinking">正在看你指的这一处…</div>}
+      <div className="md-doc msg-md" dangerouslySetInnerHTML={{ __html: html }} />
+      {a.status === 'error' && <div className="err">出错了：{a.error}</div>}
+      {a.status === 'done' && (
+        <div className="msg-foot focus-skip">
+          <span className="dim">
+            {a.model}
+            {a.ms ? ` · ${(a.ms / 1000).toFixed(1)}s` : ''}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 往下裂变出的解释窗口：每追问一层就往下长一张卡片；它本身也是一个能被眼睛选中的视图 */
+function ForkPanel({ cards }: { cards: ForkCard[] }): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+  const stick = useRef(true)
+  const last = cards[cards.length - 1]
+
+  useEffect(() => {
+    const blocks = new ElementBlocks(() => ref.current)
+    const adapter = new DomAdapter({
+      id: 'fork',
+      kind: 'chat',
+      root: () => ref.current,
+      blocks,
+      docTitle: () => '解释窗口',
+      capture: (rect) => la.win.capture(rect),
+      refOf: refOf('card')
+    })
+    const off = panes.register(adapter)
+    const mo = new MutationObserver(() => blocks.invalidate())
+    if (ref.current) mo.observe(ref.current, { childList: true, subtree: true })
+    return () => {
+      off()
+      mo.disconnect()
+    }
+  }, [])
+
+  // 最新一层尽量整张露出来：往下滚，但最多滚到它的开头贴着顶（再长就从开头往下读）
+  const follow = () => {
+    const el = ref.current
+    const node = last && el?.querySelector<HTMLElement>(`[data-card="${last.id}"]`)
+    if (!el || !node) return
+    const top = node.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 8
+    el.scrollTop = Math.max(el.scrollTop, Math.min(top, el.scrollHeight - el.clientHeight))
+  }
+  useEffect(() => {
+    stick.current = true
+    follow()
+    requestAnimationFrame(() => focus.refresh())
+  }, [last?.id])
+  // 流式输出时跟着长（用户自己往上翻了就不打扰）
+  useEffect(() => {
+    if (stick.current && last?.ans.status === 'streaming') follow()
+  }, [last?.ans.text])
+
+  return (
+    <div className="fork">
+      <div className="fork-head">
+        <span className="fork-mark">
+          <Icon name="split" />
+        </span>
+        <b>解释窗口</b>
+        <span className="dim small">往下裂变 · 第 {cards.length} 层</span>
+        <span className="grow" />
+        {cards.length > 1 && (
+          <button className="btn sm ghost" onClick={() => popFork()} title="收起最下面一层（右侧模式按 B）">
+            上一层
+          </button>
+        )}
+        <button className="btn sm ghost" onClick={closeFork} title="关掉解释窗口">
+          关闭
+        </button>
+      </div>
+      <div
+        className="fork-scroll"
+        ref={ref}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+        }}
+      >
+        {cards.map((c, i) => (
+          <ForkCardView key={c.id} c={c} depth={i} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -132,7 +255,8 @@ export function ChatPane(): React.JSX.Element {
       root: () => listRef.current,
       blocks,
       docTitle: () => '右侧对话',
-      capture: (rect) => la.win.capture(rect)
+      capture: (rect) => la.win.capture(rect),
+      refOf: refOf('mid')
     })
     const off = panes.register(adapter)
     const mo = new MutationObserver(() => blocks.invalidate())
@@ -149,17 +273,33 @@ export function ChatPane(): React.JSX.Element {
     if (el && stick.current) el.scrollTop = el.scrollHeight
   }, [chat.msgs])
 
+  // 解释窗口开合会挤压 / 放开回答区：刚问的那一处别被挤到下面看不见，高亮框也跟着重算
+  const forkOpen = chat.fork.length > 0
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      const el = listRef.current
+      const st = focus.state.get()
+      const u = forkOpen && st.paneId === 'chat' && st.sel ? unionBox(st.sel.rects) : null
+      if (el && u) {
+        const r = el.getBoundingClientRect()
+        const bottom = u.y + Math.min(u.height, 120)
+        if (bottom > r.bottom - 16) el.scrollBy({ top: bottom - r.bottom + 40 })
+      }
+      focus.refresh()
+    })
+  }, [forkOpen])
+
   const send = () => {
     const q = draft.trim()
     if (!q) return
     setDraft('')
-    ask('ask', { question: q })
+    ask('ask', { question: q, target: 'main' })
   }
 
   const retry = (i: number) => {
     const prevUser = [...chat.msgs.slice(0, i)].reverse().find((m) => m.role === 'user')
     if (!prevUser) return
-    ask(prevUser.action || 'ask', { question: prevUser.action === 'ask' ? prevUser.text : undefined, ctx: prevUser.ctx })
+    ask(prevUser.action || 'ask', { question: prevUser.action === 'ask' ? prevUser.text : undefined, ctx: prevUser.ctx, target: 'main' })
   }
 
   const jevOn = !!s?.jevMode
@@ -173,7 +313,7 @@ export function ChatPane(): React.JSX.Element {
           </button>
         )}
         <ModelPicker />
-        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="Jev 模式：先判断再开口（右手柄 + 键）">
+        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="Jev 模式：先判断再开口（长按右手柄 +）">
           <input
             type="checkbox"
             checked={jevOn}
@@ -216,9 +356,22 @@ export function ChatPane(): React.JSX.Element {
       >
         {!chat.msgs.length && (
           <div className="chat-empty no-focus">
-            <p>👀 {ui.mode === 'global' ? '看向屏幕上任何一处' : '看向左边的一段'}，按 <b>A</b> 解释</p>
-            <p>🕹 推右摇杆精确到词，按 <b>X</b> 翻译、<b>Y</b> 总结</p>
-            <p>🎙 按住 <b>ZR</b> 说出你的问题</p>
+            <p>
+              <Icon name="eye" />
+              <span>{ui.mode === 'global' ? '看向屏幕上任何一处' : '看向左边的一段'}，按 <b>A</b> 解释</span>
+            </p>
+            <p>
+              <Icon name="gamepad" />
+              <span>推右摇杆精确到词，按 <b>X</b> 翻译、<b>Y</b> 总结</span>
+            </p>
+            <p>
+              <Icon name="mic" />
+              <span>按住 <b>ZR</b> 说出你的问题</span>
+            </p>
+            <p>
+              <Icon name="split" />
+              <span>按 <b>+</b> 视线改跟这边的回答，不懂的按 <b>A</b> 往下裂变解释，<b>−</b> 回左边</span>
+            </p>
             <p className="dim">键盘：⌥↩ 解释 · ⌥T 翻译 · ⌥S 总结 · 按住 ⌥空格 说话</p>
           </div>
         )}
@@ -226,6 +379,8 @@ export function ChatPane(): React.JSX.Element {
           m.role === 'user' ? <UserMsg key={m.id} m={m} /> : m.role === 'assistant' ? <BotMsg key={m.id} m={m} onRetry={() => retry(i)} /> : <NoteMsg key={m.id} m={m} />
         )}
       </div>
+
+      {forkOpen && <ForkPanel cards={chat.fork} />}
 
       <div className="composer">
         <FocusChip />
@@ -239,8 +394,8 @@ export function ChatPane(): React.JSX.Element {
           <button className="btn sm" onClick={() => ask('summarize')} title="Y">
             总结 <kbd>Y</kbd>
           </button>
-          <button className="btn sm" onClick={() => ask('capture')} title="截图键">
-            看图问 <kbd>📷</kbd>
+          <button className="btn sm" onClick={() => ask('capture')} title="截图键：整块截下来，蓝圈标出你在看哪，交给看图模型重点解释">
+            看图问 <Icon name="camera" />
           </button>
           {chat.busy && (
             <button className="btn sm warn" onClick={abort}>

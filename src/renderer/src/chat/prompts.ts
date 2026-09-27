@@ -31,6 +31,7 @@ export function formatContext(ctx: FocusContext): string {
   const lines: string[] = []
   const where = [ctx.docTitle && `《${ctx.docTitle}》`, SOURCE_LABEL[ctx.source], ctx.location].filter(Boolean).join(' · ')
   lines.push(`【用户正在看】${where}`)
+  if (ctx.origin) lines.push(`【这段回答当时在回应】${ctx.origin}`)
   if (ctx.selection) lines.push(`【焦点（${GRAN_LABEL[ctx.gran]}）】\n${ctx.selection}`)
   if (ctx.paragraph && ctx.paragraph !== ctx.selection) lines.push(`【所在段落】\n${ctx.paragraph}`)
   if (ctx.section) lines.push(`【所在小节】${ctx.section}`)
@@ -59,6 +60,28 @@ function explainTask(g: Granularity, ctx: FocusContext): string {
 
 const DEPTH_HINT = ['\n\n（只用一两句话回答。）', '\n\n（简短回答，一小段即可。）', '\n\n（请详细、分步骤讲清楚。）']
 
+/** 右侧模式下对回答里某一处的追问：答案进往下裂变出的解释窗口，只讲这一处 */
+export const FORK_HINT = '\n\n（这是在右侧「解释窗口」里对上面回答某一处的追问：只讲清楚焦点这一处，简短，不要把前面已经讲过的内容再讲一遍。）'
+
+/** 看图问：整张截图 + 蓝圈标出视线位置，不再纠结具体是哪一行 */
+function capturePrompt(ctx: FocusContext | null, question?: string): string {
+  const where = ctx?.region || '屏幕'
+  const lines: string[] = []
+  if (ctx?.circle) {
+    lines.push(`图片是用户${where}的整张截图。图上那个蓝色圆圈是后加的标注，圈出了用户此刻视线所在的位置（摄像头眼动估计，可能偏几十像素）。`)
+    lines.push(
+      '请重点解释蓝色圆圈里的内容：先用一句话说圈里是什么（一个词、公式、图表、代码、界面元素……），再讲清楚它的意思，需要时结合整张图的上下文；圈里有好几样东西时，优先讲最靠近圆心的那个。蓝圈本身不是原图内容，不用解释它。'
+    )
+  } else {
+    lines.push(`图片是用户${where}的整张截图（这次没拿到视线位置）。先一句话说这张图整体在讲什么，再挑最可能让人卡住的地方讲清楚。`)
+  }
+  const near = ctx?.selection || ctx?.paragraph
+  if (near) lines.push(`【蓝圈附近的原文（从页面文字层取的，仅供参考，以图为准）】\n${near}`)
+  if (ctx?.origin) lines.push(`【这块内容当时在回应】${ctx.origin}`)
+  if (question) lines.push(`用户的问题：${question}`)
+  return lines.join('\n\n')
+}
+
 /** depth：Jev 判断的详略档位 0~2，不传就按默认 */
 export function buildPrompt(action: Action, ctx: FocusContext | null, question?: string, depth?: number): string {
   const hint = depth === undefined ? '' : DEPTH_HINT[Math.max(0, Math.min(2, Math.round(depth)))]
@@ -78,7 +101,7 @@ function buildPromptInner(action: Action, ctx: FocusContext | null, question?: s
     case 'summarize':
       return `${c}总结焦点所在的${ctx && ctx.gran === 'section' ? '小节' : '段落'}：3～5 条要点，每条一句话；最后用一句话说它在全文里起什么作用。`
     case 'capture':
-      return `${c}图片是用户正盯着的屏幕区域（可能是公式、图表、代码或视频画面）。${question || '这是什么？讲清楚它的意思，公式要逐项解释符号，图表要说清趋势和结论。'}`
+      return capturePrompt(ctx, question)
     case 'derive':
       return `${c}把焦点里的公式 / 结论一步一步推导出来，每一步说明用了什么。${question ? `\n用户的问题：${question}` : ''}`
     case 'critique':
@@ -96,6 +119,6 @@ export function bubbleText(action: Action, ctx: FocusContext | null, question?: 
   if (question) return question
   const sel = (ctx?.selection || ctx?.paragraph || '').replace(/\s+/g, ' ')
   const short = sel.length > 40 ? sel.slice(0, 40) + '…' : sel
-  if (action === 'capture') return '看看我盯着的这块'
+  if (action === 'capture') return ctx?.circle ? '看图：解释蓝圈里的内容' : '看图：这张图在讲什么'
   return `${ACTION_LABEL[action]}${short ? `「${short}」` : ''}`
 }
