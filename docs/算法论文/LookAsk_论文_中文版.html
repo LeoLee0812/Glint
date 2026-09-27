@@ -1,0 +1,325 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>LookAsk</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>/* 中文期刊论文版式：A4、双栏，参照国内计算机类核心期刊的常见样式——题目黑体、正文宋体、中英文摘要、中图分类号、GB/T 7714 参考文献 */
+@page { size: A4; margin: 20mm 17mm 20mm 17mm;
+  @top-left { content: "LookAsk 项目技术报告"; font: 8pt "Songti SC", serif; color: #555; }
+  @top-right { content: "看哪问哪：摄像头眼动词级阅读辅助"; font: 8pt "Songti SC", serif; color: #555; }
+  @bottom-center { content: counter(page); font: 9pt "Times New Roman", serif; }
+}
+body { font-family: "Times New Roman", "Songti SC", serif; font-size: 9.5pt; line-height: 1.62; color: #000; margin: 0; background: #fff; text-align: justify; }
+header { margin-bottom: 10pt; }
+.journal { font-size: 8.5pt; color: #444; border-bottom: 0.6pt solid #000; padding-bottom: 3pt; margin: 0 0 12pt; }
+.title { font-family: "Times New Roman", "Heiti SC", "PingFang SC", sans-serif; font-size: 17pt; line-height: 1.35; font-weight: bold; text-align: center; margin: 0 0 10pt; }
+.authors { text-align: center; font-family: "Times New Roman", "Kaiti SC", serif; font-size: 11pt; margin: 0 0 3pt; }
+.affil { text-align: center; font-size: 8.5pt; color: #333; margin: 0 0 10pt; }
+.abstract { font-size: 9pt; line-height: 1.6; padding: 0 0 4pt; }
+.abstract p, .eabstract p { margin: 0 0 4pt; }
+.abstract b, .eabstract b { font-family: "Times New Roman", "Heiti SC", sans-serif; }
+.cls { font-size: 8.5pt; }
+.eabstract { border-top: 0.6pt solid #000; border-bottom: 0.6pt solid #000; padding: 7pt 0 5pt; margin-top: 6pt; font-family: "Times New Roman", serif; font-size: 8.8pt; line-height: 1.4; }
+.etitle { font-size: 11.5pt; font-weight: bold; text-align: center; line-height: 1.3; margin-bottom: 4pt !important; }
+.eauthor { text-align: center; font-size: 9.5pt; }
+.eauthor span { font-size: 8.5pt; }
+.cols { column-count: 2; column-gap: 7mm; column-fill: auto; }
+h2 { font-family: "Times New Roman", "Heiti SC", sans-serif; font-size: 11pt; font-weight: bold; margin: 11pt 0 5pt; break-after: avoid; }
+h3 { font-family: "Times New Roman", "Heiti SC", sans-serif; font-size: 10pt; font-weight: bold; margin: 8pt 0 3pt; break-after: avoid; }
+p { margin: 0 0 5pt; text-indent: 2em; }
+.abstract p, .eabstract p, .tcap, figcaption, li p { text-indent: 0; }
+strong, b { font-family: "Times New Roman", "Heiti SC", sans-serif; }
+ol, ul { margin: 0 0 5pt; padding-left: 18pt; }
+li { margin-bottom: 2pt; }
+code { font-family: "Courier New", monospace; font-size: 8.6pt; }
+table { width: 100%; border-collapse: collapse; font-size: 8.2pt; margin: 3pt 0 9pt; break-inside: avoid; text-align: center; }
+thead th { border-top: 1pt solid #000; border-bottom: 0.6pt solid #000; font-weight: bold; padding: 2.5pt 3pt; font-family: "Times New Roman", "Heiti SC", sans-serif; }
+td { padding: 2pt 3pt; vertical-align: top; }
+td:first-child, th:first-child { text-align: left; }
+tbody tr:last-child td { border-bottom: 1pt solid #000; }
+.tcap { font-size: 8.4pt; margin: 6pt 0 2pt; text-align: center; break-after: avoid; }
+figure { margin: 6pt 0 9pt; break-inside: avoid; }
+figure svg { width: 100%; height: auto; display: block; }
+figure.wide { column-span: all; margin: 4pt 0 10pt; }
+figcaption { font-size: 8.4pt; margin-top: 3pt; text-align: center; }
+.katex { font-size: 1.02em; }
+.katex-display { margin: 5pt 0; overflow: hidden; }
+.refs { font-size: 8pt; padding-left: 20pt; line-height: 1.4; list-style: none; counter-reset: ref; }
+.refs li { counter-increment: ref; position: relative; margin-bottom: 2.5pt; }
+.refs li::before { content: "[" counter(ref) "]"; position: absolute; left: -20pt; }
+header p { text-indent: 0; }
+.title { text-wrap: balance; }
+p:has(code) { text-align: left; }
+td:first-child, th:first-child { min-width: 2.4em; }
+.refs { text-align: left; }
+</style></head><body>
+<header><div class="front">
+<p class="journal">LookAsk 项目技术报告 · 2026 年 9 月</p>
+<h1 class="title">看哪问哪：基于对偶岭回归、核漂移校正与视线—手动协同的摄像头眼动词级阅读辅助</h1>
+<p class="authors">Leo<sup>1</sup></p>
+<p class="affil"><sup>1</sup>独立开发者　源代码：LookAsk 仓库 <code>src/renderer/src</code></p>
+
+<div class="abstract">
+<p><b>摘　要：</b>在阅读时向大语言模型（LLM）提问，至今仍需要选中、复制、粘贴原文。LookAsk 仅使用笔记本内置摄像头和一只 Joy-Con 手柄，在每次提问时自动附上“用户正在看的那段文字”。然而普通摄像头眼动的精度只能到段落级。本文提出一条把这一粗糙信号放大为词级指向的算法链：用约 1650 维的眼部外观与人脸关键点特征，以对偶形式求解岭回归得到屏幕坐标，并用“按校准点整组留出”的交叉验证选择正则强度；校准后的漂移由隐式校准事件驱动的时空 Nadaraya–Watson 估计器在线校正，辅以异常值门限与收缩因子；信号经 One Euro 滤波平滑、由带迟滞的离散度阈值检测器切分为注视事件，再通过软/硬两级焦点模型与关键词吸附启发式落到具体文字；最后由级联判断模块决定助手何时开口。在直接调用生产代码的合成实验中：对偶解法求解 408×1650 问题比原始形式仅做 Gram 与 Cholesky 分解一步还快 4.2 倍；按帧交叉验证把样本外误差低估 7.1 倍，而分组交叉验证只低估 2.3 倍；One Euro 滤波把稳态误差从 40 px 降到 20.5 px，阶跃延迟 33 ms；漂移校正在 16 次隐式校准后把平均误差从 46.7 px 降到 18.7 px，而去掉异常值门限后误差反升至 48.6 px。</p>
+<p class="kw"><b>关键词：</b>摄像头眼动追踪；岭回归；核方法；隐式校准；自适应滤波；注视检测；视线交互；大语言模型阅读助手</p>
+<p class="cls"><b>中图分类号：</b>TP391.4　　<b>文献标志码：</b>A</p>
+</div>
+
+<div class="eabstract">
+<p class="etitle">Look-and-Ask: Word-Level Reading Assistance from Commodity Webcam Gaze via Dual Ridge Regression, Kernel Drift Correction and Gaze–Manual Refinement</p>
+<p class="eauthor">Leo<br><span>(Independent developer)</span></p>
+<p><b>Abstract:</b> LookAsk attaches the passage under the user’s gaze to every question sent to a large language model, using only a laptop webcam and a Joy-Con controller. Because webcam gaze is accurate only to paragraph level, we present an algorithmic chain that turns it into a word-level pointer: dual-form ridge regression with leave-one-calibration-point-out cross-validation, spatio-temporal kernel drift correction driven by implicit calibration events with outlier gating and shrinkage, One Euro filtering, dispersion-threshold fixation detection with hysteresis, two-level gaze–manual focus with keyword attraction, and a cascaded judgement stage. Synthetic experiments that execute the production code show a 4.2× speed-up of the dual solver, a 2.3× (versus 7.1×) underestimation of out-of-sample error by grouped (versus frame-level) cross-validation, a reduction of steady-state noise from 40 px to 20.5 px with 33 ms latency, and a reduction of drift error from 46.7 px to 18.7 px after 16 implicit events.</p>
+<p><b>Key words:</b> webcam eye tracking; ridge regression; kernel methods; implicit calibration; adaptive filtering; fixation detection; gaze interaction; LLM reading assistant</p>
+</div>
+</div>
+</header>
+<main class="cols"><h2>1　引言</h2>
+<p>借助大语言模型阅读技术资料已十分普遍，但交互仍然笨拙：读者必须离开正文，选中相关段落，复制到对话窗口，再描述哪里没看懂。眼动追踪可以直接回答“用户在问哪一段”这个问题。专用眼动仪精度高，但需要额外硬件；基于摄像头的方法<sup>[1-3]</sup>可在任意笔记本上运行，误差却通常在几十到一百多个屏幕点之间，足以分辨段落，不足以分辨词语。</p>
+<p>LookAsk 是一款 macOS 桌面程序：左侧显示阅读内容（PDF、Markdown、终端，或在全局浮层模式下的任意应用），右侧是对话智能体。用户提问时，视线所在的段落被自动附为上下文。本文不试图把摄像头精度推向物理极限，而是把系统设计成一条链，让每一级弥补上一级留下的误差（图 1）。</p>
+<p>本文的贡献如下：</p>
+<ol>
+<li>对偶形式的岭回归视线映射，配合分组（按校准点整组留出）交叉验证自动选择正则项，并给出诚实的误差估计（4.2–4.3 节）；</li>
+<li>在线漂移校正方案：把日常的确认按键转化为隐式校准样本，结合时空核、异常值门限与收缩因子（4.4 节）；</li>
+<li>视线到文字的映射层：把段落级视线与手动逐词精修、带迟滞的关键词吸附启发式结合起来（4.6 节）；</li>
+<li>级联决策模块：在生成之前放置零成本本地规则与概率判断模型，使大模型调用保持稀少（4.7 节）；</li>
+<li>直接运行生产实现的可复现合成实验（第 5 节）。</li>
+</ol>
+<h2>2　相关工作</h2>
+<p><strong>摄像头视线估计</strong>　WebGazer<sup>[1]</sup>用带正则的线性回归把眼部图像特征映射到屏幕坐标，并持续利用鼠标点击补充训练样本。iTracker<sup>[2]</sup>、MPIIGaze<sup>[3]</sup>等基于外观的深度模型在大规模数据上学习与人无关的映射，能跨用户泛化，但仍受益于个人校准。也有工作利用视觉显著性隐式获取校准目标<sup>[13]</sup>。LookAsk 沿用轻量回归路线，并借助 MediaPipe 人脸关键点<sup>[11]</sup>获得稳定的眼部区域与头部姿态。</p>
+<p><strong>正则回归与模型选择</strong>　岭回归<sup>[7]</sup>及其对偶（核）形式<sup>[8]</sup>是经典方法；当特征数多于样本数时，对偶形式计算上更有利。对具有分组结构的数据做交叉验证时，必须整组留出，否则估计会偏乐观<sup>[12,15]</sup>。</p>
+<p><strong>指点与视线信号处理</strong>　One Euro 滤波器<sup>[4]</sup>根据信号速度自适应调整截止频率，被广泛用于含噪指点输入。离散度阈值识别（I-DT）<sup>[5]</sup>是区分注视与扫视的经典方法。</p>
+<p><strong>视线—手动协同交互</strong>　只用视线做选择会遇到“点石成金（Midas touch）”问题<sup>[14]</sup>。MAGIC pointing<sup>[6]</sup>让视线负责粗定位、手动输入负责精确选择；LookAsk 采用同一原则，只是把鼠标换成了游戏手柄。</p>
+<h2>3　系统概述</h2>
+<figure class="wide"><svg viewBox="0 0 1000 170" xmlns="http://www.w3.org/2000/svg" font-family="Times New Roman, Songti SC, serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker></defs><rect x="10" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="69.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">摄像头</text><text x="69.0" y="57" font-size="12" text-anchor="middle" fill="#444">1280×720，30 Hz</text><rect x="142" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="201.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">人脸关键点</text><text x="201.0" y="57" font-size="12" text-anchor="middle" fill="#444">478 点 [11]</text><rect x="274" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="333.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">特征提取</text><text x="333.0" y="57" font-size="12" text-anchor="middle" fill="#444">d ≈ 1650</text><rect x="406" y="20" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="465.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">对偶岭回归</text><text x="465.0" y="57" font-size="12" text-anchor="middle" fill="#444">式 1–4</text><rect x="538" y="20" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="597.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">漂移校正</text><text x="597.0" y="57" font-size="12" text-anchor="middle" fill="#444">式 5–6</text><rect x="670" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="729.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">One Euro</text><text x="729.0" y="57" font-size="12" text-anchor="middle" fill="#444">式 7–8</text><rect x="802" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="861.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">I-DT</text><text x="861.0" y="57" font-size="12" text-anchor="middle" fill="#444">注视事件</text><rect x="802" y="110" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="861.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">焦点 + 吸附</text><text x="861.0" y="147" font-size="12" text-anchor="middle" fill="#444">4.6 节</text><rect x="670" y="110" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="729.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">上下文</text><text x="729.0" y="147" font-size="12" text-anchor="middle" fill="#444">焦点段落</text><rect x="538" y="110" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="597.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">级联判断</text><text x="597.0" y="147" font-size="12" text-anchor="middle" fill="#444">4.7 节</text><rect x="406" y="110" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="465.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">大模型</text><text x="465.0" y="147" font-size="12" text-anchor="middle" fill="#444">回答</text><line x1="129" y1="43" x2="141" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="261" y1="43" x2="273" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="393" y1="43" x2="405" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="525" y1="43" x2="537" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="657" y1="43" x2="669" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="789" y1="43" x2="801" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="861.0" y1="67" x2="861.0" y2="108" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="801" y1="133" x2="789" y2="133" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="669" y1="133" x2="657" y2="133" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="537" y1="133" x2="525" y2="133" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><text x="10" y="92" font-size="12" fill="#1F5FBF">蓝色：本文贡献　灰色：现有组件或衔接环节</text></svg><figcaption><b>图 1</b>　LookAsk 处理流程。上行：在屏幕坐标下估计视线；下行（自右向左）：视线到文字的映射，以及把焦点段落交给大模型的决策环节</figcaption></figure>
+
+<p>渲染进程（React）运行眼动引擎、焦点控制器和对话界面，岭回归拟合放在 Web Worker 中执行。Electron 主进程负责大模型访问与设置，原生 Swift 助手直接读取 Joy-Con 的 HID 原始报告，并提供语音识别、OCR 与辅助功能取词。所有视线输出均为屏幕坐标。</p>
+<h2>4　方法</h2>
+<h3>4.1　人脸关键点与特征</h3>
+<p>每帧摄像头画面（1280×720，约 30 Hz）先经 MediaPipe Face Landmarker<sup>[11]</sup>处理，得到 478 个三维关键点（其中 468、473 为虹膜中心）、52 个表情系数和头部姿态变换。开源的 RealEye 特征提取库（AGPL-3.0）把双眼区域裁成 40×20 的灰度块，并与关键点几何、表情系数、头部姿态拼接，得到特征向量 $\mathbf{x}\in\mathbb{R}^{d}$，$d\approx1650$。运行时眨眼系数大于 0.45 的帧直接跳过（校准采集时要求小于 0.4）。这一级使用现成组件，不属于本文贡献。</p>
+<h3>4.2　对偶岭回归</h3>
+<p>校准时用户依次注视 9 或 17 个目标点，每点 850 ms，得到约 $N\approx400$ 帧样本 $\{(\mathbf{x}_i,\mathbf{t}_i)\}$。记中心化后的特征矩阵为 $X\in\mathbb{R}^{N\times d}$、中心化目标为 $\mathbf{y}$，每个屏幕坐标轴分别求解</p>
+<p>$$\min_{\boldsymbol\beta}\ \|\mathbf{y}-X\boldsymbol\beta\|^2+\lambda\|\boldsymbol\beta\|^2 . \tag{1}$$</p>
+<p>原始解 $\boldsymbol\beta=(X^\top X+\lambda I_d)^{-1}X^\top\mathbf{y}$ 需要求解 $d\times d$ 的方程组。利用恒等式 $(X^\top X+\lambda I_d)^{-1}X^\top = X^\top(XX^\top+\lambda I_N)^{-1}$，得到等价的对偶解</p>
+<p>$$\boldsymbol\alpha=(K+\lambda I_N)^{-1}\mathbf{y},\qquad \boldsymbol\beta=X^\top\boldsymbol\alpha , \tag{2}$$</p>
+<p>其中 $K=XX^\top$ 为 $N\times N$ 的 Gram 矩阵。由于 $K+\lambda I_N$ 对称正定，可做 Cholesky 分解 $LL^\top$<sup>[16]</sup>，再经前代、回代求解；若数值上分解失败，则把 $\lambda$ 乘以 10 后重试。对新一帧的预测为</p>
+<p>$$\hat{t}_x=\bar{t}_x+(\mathbf{x}-\bar{\mathbf{x}})^\top\boldsymbol\beta_x , \tag{3}$$</p>
+<p>即每个轴一次 $d$ 维点积。当 $d\gg N$ 时，对偶形式的代价为 $O(N^2d+N^3/3)$，原始形式为 $O(Nd^2+d^3/3)$（表 1）。</p>
+<h3>4.3　分组交叉验证</h3>
+<p>正则强度从 $\lambda\in\{3\times10^{-4},3\times10^{-3},3\times10^{-2},3\times10^{-1}\}\cdot\overline{\operatorname{diag}(K)}$ 中选取，乘以 Gram 矩阵对角线均值是为了让候选网格与特征尺度无关。同一目标点录下的各帧几乎一模一样，若只留出单帧，训练集中仍有它的“近似副本”。因此本文每次把一个校准点的全部帧整组留出（leave-one-group-out）<sup>[15]</sup>。每一折对 $K$ 的训练子矩阵重新分解，误差按帧而非按点平均，以贴合运行时的行为：</p>
+<p>$$\mathrm{CV}(\lambda)=\frac{1}{N}\sum_{g}\sum_{i\in g}\big\|\hat{\mathbf{t}}^{(-g)}_i(\lambda)-\mathbf{t}_i\big\|_2 . \tag{4}$$</p>
+<p>误差最小的 $\lambda^\ast$ 用全部数据重新拟合，其误差 $\mathrm{CV}(\lambda^\ast)$ 展示给用户，也可按 $\theta=\arctan(\mathrm{px}\times0.023\,\mathrm{cm}/55\,\mathrm{cm})$ 换算为视角。校准点少于 5 个时不做交叉验证。</p>
+<h3>4.4　隐式校准与核漂移校正</h3>
+<p><strong>隐式样本</strong>　用户按 A、X 或 Y 键确认硬焦点时，假定其正注视该焦点。焦点中心 $\mathbf{t}_i$ 与此前 450 ms 原始预测均值 $\mathbf{p}_i$ 之间的残差 $\mathbf{r}_i=\mathbf{t}_i-\mathbf{p}_i$ 以权重 $w^0_i=0.6$ 记录，前提是 $\|\mathbf{r}_i\|&lt;320$ px；更大的残差说明用户当时并未注视焦点，直接丢弃。用户主动发起的漂移校正以权重 2 记录。最多保留最近 16 条残差。</p>
+<p><strong>估计器</strong>　对新的预测点 $\mathbf{p}$，每条残差获得时空权重</p>
+<p>$$w_i(\mathbf{p})=w^0_i\exp\!\Big(-\frac{\|\mathbf{p}_i-\mathbf{p}\|^2}{2\sigma^2}\Big)\exp\!\Big(-\frac{t-\tau_i}{T}\Big), \tag{5}$$</p>
+<p>其中 $\sigma=520$ pt，$T=20$ min。校正量为带收缩的 Nadaraya–Watson 估计<sup>[9,10]</sup>：</p>
+<p>$$\begin{gathered}\Delta(\mathbf{p})=k\,\frac{\sum_i w_i(\mathbf{p})\,\mathbf{r}_i}{\sum_i w_i(\mathbf{p})},\\ k=\frac{\sum_i w_i(\mathbf{p})}{\sum_i w_i(\mathbf{p})+0.35}.\end{gathered} \tag{6}$$</p>
+<p>空间核允许屏幕不同区域有不同的偏移；因子 $k$ 在证据稀少或距离较远时把校正量向 0 收缩。</p>
+<h3>4.5　平滑与注视检测</h3>
+<p>校正后的信号在每个坐标轴上经 One Euro 滤波<sup>[4]</sup>。指数平滑系数为</p>
+<p>$$\alpha=\frac{1}{1+\tau/\Delta t},\qquad \tau=\frac{1}{2\pi f_c} \tag{7}$$</p>
+<p>其截止频率随速度自适应：</p>
+<p>$$f_c=f_{c,\min}+\beta\,|\dot{\hat{x}}| , \tag{8}$$</p>
+<p>速度估计本身先经 1 Hz 低通。本文取 $f_{c,\min}=0.55$ Hz、$\beta=0.0045$；界面上的平滑度滑块 $v\in[0,1]$ 通过 $f_{c,\min}=\max(0.12,\,1.4-1.2v)$ 调节。</p>
+<p>注视用在线 I-DT<sup>[5]</sup>检测：最近 140 ms 内至少 3 个样本都落在其质心 95 px 以内时，注视开始；新样本与滑动质心的距离不超过 $1.3\times95\approx124$ px 时注视持续，否则结束。开始与结束半径不同，形成迟滞，避免视线在边界附近抖动时反复开关。</p>
+<h3>4.6　从视线到文字</h3>
+<p><strong>两级焦点</strong>　软焦点跟随注视，以段落为粒度。第一次拨动右摇杆时，软焦点转为硬焦点，由手动逐词或逐行移动，粒度可在词、句、段、节之间切换（用 <code>Intl.Segmenter</code> 分词，中文采用词典分词）。视线离开超过 0.8 s 或按下摇杆时，控制权交还视线。屏幕分为阅读侧与回答侧，视线只在当前侧解释，距离边界 70 pt 以内的注视被拉回本侧。</p>
+<p><strong>关键词吸附</strong>　在视线点周围按网格布置探测点，用 <code>caretRangeFromPoint</code> 取得对应词语。每个词按词法线索得到关键词得分 $s\in[0,1]$（缩写 0.9；字母数字混合或驼峰词 0.85；连字符词 0.72；4 字及以上中文词 0.8；公式 0.95；位于强调格式内加 0.4；停用词为 0），权重为</p>
+<p>$$W=s\cdot\max\!\Big(0,\,1-\min\!\big(1,\tfrac{d}{r}\big)^{1.5}\Big) , \tag{9}$$</p>
+<p>其中 $d$ 为视线点到词框的距离，$r$ 为搜索半径。新候选的权重须超过当前吸附词的 <code>switchRatio</code> 倍才会替换；视线离开超过 <code>release</code> 距离才松开；扫视期间暂停吸附。全部 9 个参数都是单一强度 $k\in[0,1]$（默认 0.7）的线性函数，例如 $r=40+100k$。视线指示器是一个 36 节点的质点—弹簧环，吸附时其静止形状渐变为包住目标词的超椭圆 $|x/w|^5+|y/h|^5=1$，使吸附状态一目了然。</p>
+<h3>4.7　级联决策</h3>
+<p>为决定助手何时主动提供帮助，LookAsk 采用三级级联：（1）零成本本地规则（忽略过短段落、停留不足 1.5 s 以及 20 s 内的重复提示）；（2）低成本判断模型，只回答选择题或概率题（难度、读者是否卡住、提问意图、是否需要看图、是否需要核实）；（3）大模型，仅在（2）判定需要时调用。数值信号在交给判断模型前先离散化为文字档位（如停留 &lt;3 s 为“很短”，3–8 s 为“正常”，8–20 s 为“偏长”，&gt;20 s 为“很长”）。当停留 ≥9 s 或回看 ≥3 次且难度 ≥1.4 时，段落进入主动解释候选；判断模型给出的概率 ≥0.65 时才弹出建议。由于视线只能分辨段落，焦点段落还会被拆成候选句，由判断模型结合用户原话选出所指的那一句（指代消解）。判断结果按内容哈希缓存，并受每日 token 预算约束。</p>
+<h2>5　实验</h2>
+<h3>5.1　实验设置</h3>
+<p>本文未开展真人被试实验，以下实验<strong>全部为合成实验</strong>，直接调用生产代码中的 <code>fitRidge</code>、<code>predictRidge</code>（ridge.ts）与 <code>OneEuro</code>（filters.ts）；漂移估计器按 engine.ts 中的式 (5)–(6) 原样重新实现。合成特征的生成方式为：把目标位置的二次编码经固定随机投影和 tanh 非线性变换（$d=1650$），叠加每个校准点共享的扰动项（模拟头部姿态与眼球微偏）以及逐帧独立噪声。校准布局采用程序中的 17 点方案。随机种子固定，结果可复现（<code>docs/算法论文/experiments</code>）；计时在一台 Apple 芯片 MacBook 上以 Node.js 22 单线程测得。</p>
+<h3>5.2　对偶解法的计算代价</h3>
+<p class="tcap"><b>表 1</b>　$N=408$ 帧（17 点 × 24 帧）、$d=1650$ 时的拟合代价（时间为 3 次运行的中位数，不同运行间约有百分之几的波动；原始形式只计入 Gram 矩阵构造与 Cholesky 分解）</p>
+
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>浮点运算次数</th>
+<th>时间 / ms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>原始形式，$d\times d$ 方程组</td>
+<td>$1.11\times10^{9}+1.50\times10^{9}$</td>
+<td>1192</td>
+</tr>
+<tr>
+<td>对偶形式，$N\times N$ 方程组，单个 $\lambda$</td>
+<td>$2.75\times10^{8}+2.26\times10^{7}$</td>
+<td>283</td>
+</tr>
+<tr>
+<td>对偶形式，4 个 $\lambda$ × 17 折分组交叉验证</td>
+<td>—</td>
+<td>719</td>
+</tr>
+</tbody>
+</table>
+<p>对偶解法比原始形式仅分解一步还快 4.2 倍；包含交叉验证的完整模型选择（额外 68 次分解）约 0.7 s 完成，足以在校准结束时运行而不被察觉。</p>
+<h3>5.3　交叉验证估计的偏差</h3>
+<p>生成 3 组校准会话（17 点 × 12 帧），比较所选模型在按帧留一与按点分组留一两种交叉验证下的误差，以及它在 200 个未见过的随机屏幕位置上的真实误差。</p>
+<p class="tcap"><b>表 2</b>　交叉验证误差与真实误差（px）</p>
+
+<table>
+<thead>
+<tr>
+<th>会话</th>
+<th>按帧交叉验证</th>
+<th>分组交叉验证（本文）</th>
+<th>未见位置上的真实误差</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>5.1</td>
+<td>17.3</td>
+<td>34.4</td>
+</tr>
+<tr>
+<td>2</td>
+<td>4.7</td>
+<td>15.3</td>
+<td>50.9</td>
+</tr>
+<tr>
+<td>3</td>
+<td>6.0</td>
+<td>15.6</td>
+<td>26.6</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>5.3</td>
+<td>16.1</td>
+<td>37.3</td>
+</tr>
+</tbody>
+</table>
+<p>按帧交叉验证平均把真实误差低估 7.1 倍，分组交叉验证低估 2.3 倍。分组交叉验证明显更诚实，但仍偏乐观，原因在于未见位置包含校准网格凸包以外的区域，且合成映射本身是非线性的。</p>
+<h3>5.4　One Euro 滤波</h3>
+<p>以 30 Hz 模拟一维视线轨迹：12 次注视，每次 600–1200 ms，位置随机，叠加高斯噪声（$\sigma=40$ px）。统计每次注视开始 300 ms 之后的均方根误差（稳态），以及覆盖每次扫视 90% 幅度所需时间的中位数。</p>
+<p class="tcap"><b>表 3</b>　合成轨迹上的滤波器对比（原始噪声 40 px）</p>
+
+<table>
+<thead>
+<tr>
+<th>滤波器</th>
+<th>稳态均方根误差 / px</th>
+<th>90% 阶跃延迟 / ms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>固定截止频率 0.55 Hz</td>
+<td>90.0</td>
+<td>700</td>
+</tr>
+<tr>
+<td>固定截止频率 5 Hz</td>
+<td>23.9</td>
+<td>67</td>
+</tr>
+<tr>
+<td>One Euro，$f_{c,\min}=0.55$ Hz，$\beta=0.0045$</td>
+<td><strong>20.5</strong></td>
+<td><strong>33</strong></td>
+</tr>
+</tbody>
+</table>
+<figure><svg viewBox="0 0 460 301" xmlns="http://www.w3.org/2000/svg" font-family="Times New Roman, Songti SC, serif" font-size="12"><rect x="52" y="12" width="396" height="198" fill="none" stroke="#000" stroke-width="0.8"/><line x1="48" y1="210.0" x2="52" y2="210.0" stroke="#000" stroke-width="0.8"/><text x="46" y="214.0" text-anchor="end">0</text><line x1="48" y1="170.4" x2="52" y2="170.4" stroke="#000" stroke-width="0.8"/><text x="46" y="174.4" text-anchor="end">300</text><line x1="48" y1="130.8" x2="52" y2="130.8" stroke="#000" stroke-width="0.8"/><text x="46" y="134.8" text-anchor="end">600</text><line x1="48" y1="91.2" x2="52" y2="91.2" stroke="#000" stroke-width="0.8"/><text x="46" y="95.2" text-anchor="end">900</text><line x1="48" y1="51.6" x2="52" y2="51.6" stroke="#000" stroke-width="0.8"/><text x="46" y="55.6" text-anchor="end">1200</text><line x1="48" y1="12.0" x2="52" y2="12.0" stroke="#000" stroke-width="0.8"/><text x="46" y="16.0" text-anchor="end">1500</text><line x1="52.0" y1="210" x2="52.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="52.0" y="226" text-anchor="middle">0</text><line x1="131.7" y1="210" x2="131.7" y2="214" stroke="#000" stroke-width="0.8"/><text x="131.7" y="226" text-anchor="middle">1</text><line x1="211.5" y1="210" x2="211.5" y2="214" stroke="#000" stroke-width="0.8"/><text x="211.5" y="226" text-anchor="middle">2</text><line x1="291.2" y1="210" x2="291.2" y2="214" stroke="#000" stroke-width="0.8"/><text x="291.2" y="226" text-anchor="middle">3</text><line x1="370.9" y1="210" x2="370.9" y2="214" stroke="#000" stroke-width="0.8"/><text x="370.9" y="226" text-anchor="middle">4</text><line x1="450.7" y1="210" x2="450.7" y2="214" stroke="#000" stroke-width="0.8"/><text x="450.7" y="226" text-anchor="middle">5</text><text x="250.0" y="246" text-anchor="middle">时间 / s</text><text transform="translate(12 111.0) rotate(-90)" text-anchor="middle">水平视线位置 / px</text><polyline points="52.0,69.3 54.7,61.7 57.3,62.5 60.0,57.9 62.6,63.5 65.3,56.6 67.9,70.2 70.6,55.5 73.3,72.5 75.9,59.3 78.6,62.9 81.2,68.3 83.9,59.8 86.6,72.0 89.2,65.1 91.9,68.0 94.5,63.0 97.2,72.0 99.8,70.0 102.5,66.3 105.2,65.1 107.8,61.4 110.5,55.6 113.1,68.8 115.8,70.6 118.4,61.8 121.1,64.9 123.8,173.0 126.4,169.1 129.1,169.8 131.7,175.9 134.4,173.1 137.0,178.1 139.7,169.9 142.4,171.7 145.0,167.2 147.7,173.2 150.3,181.8 153.0,161.3 155.7,171.9 158.3,178.8 161.0,180.0 163.6,165.0 166.3,170.7 168.9,167.9 171.6,172.8 174.3,169.5 176.9,170.0 179.6,170.0 182.2,167.8 184.9,174.9 187.5,170.9 190.2,176.9 192.9,173.0 195.5,172.3 198.2,145.8 200.8,152.5 203.5,151.2 206.1,153.5 208.8,146.6 211.5,155.6 214.1,139.6 216.8,158.7 219.4,148.7 222.1,150.9 224.8,153.3 227.4,147.3 230.1,153.9 232.7,143.4 235.4,150.9 238.0,154.8 240.7,156.0 243.4,161.2 246.0,152.1 248.7,154.9 251.3,158.5 254.0,159.2 256.6,152.0 259.3,117.3 262.0,110.4 264.6,113.6 267.3,109.9 269.9,122.6 272.6,124.3 275.2,114.6 277.9,112.7 280.6,111.2 283.2,120.4 285.9,115.8 288.5,107.7 291.2,114.0 293.9,117.4 296.5,108.1 299.2,115.0 301.8,119.7 304.5,109.5 307.1,124.8 309.8,115.7 312.5,109.5 315.1,54.0 317.8,49.7 320.4,43.2 323.1,49.4 325.7,47.0 328.4,40.3 331.1,44.8 333.7,41.2 336.4,52.9 339.0,52.9 341.7,45.9 344.3,53.0 347.0,49.8 349.7,49.0 352.3,53.8 355.0,49.1 357.6,51.5 360.3,53.9 363.0,40.0 365.6,120.6 368.3,116.0 370.9,123.8 373.6,121.9 376.2,124.4 378.9,118.8 381.6,118.6 384.2,129.5 386.9,120.0 389.5,127.9 392.2,121.4 394.8,108.5 397.5,121.8 400.2,120.8 402.8,119.3 405.5,120.9 408.1,128.1 410.8,126.5 413.4,110.9 416.1,126.3 418.8,123.2 421.4,124.9 424.1,126.2 426.7,121.4 429.4,127.0 432.1,129.3 434.7,115.7 437.4,127.3 440.0,122.3 442.7,121.2 445.3,121.4 448.0,130.8" fill="none" stroke="#C8C8C8" stroke-width="0.8" stroke-dasharray="none"/><polyline points="52.0,63.5 54.7,63.5 57.3,63.5 60.0,63.5 62.6,63.5 65.3,63.5 67.9,63.5 70.6,63.5 73.3,63.5 75.9,63.5 78.6,63.5 81.2,63.5 83.9,63.5 86.6,63.5 89.2,63.5 91.9,63.5 94.5,63.5 97.2,63.5 99.8,63.5 102.5,63.5 105.2,63.5 107.8,63.5 110.5,63.5 113.1,63.5 115.8,63.5 118.4,63.5 121.1,63.5 123.8,172.0 126.4,172.0 129.1,172.0 131.7,172.0 134.4,172.0 137.0,172.0 139.7,172.0 142.4,172.0 145.0,172.0 147.7,172.0 150.3,172.0 153.0,172.0 155.7,172.0 158.3,172.0 161.0,172.0 163.6,172.0 166.3,172.0 168.9,172.0 171.6,172.0 174.3,172.0 176.9,172.0 179.6,172.0 182.2,172.0 184.9,172.0 187.5,172.0 190.2,172.0 192.9,172.0 195.5,172.0 198.2,152.9 200.8,152.9 203.5,152.9 206.1,152.9 208.8,152.9 211.5,152.9 214.1,152.9 216.8,152.9 219.4,152.9 222.1,152.9 224.8,152.9 227.4,152.9 230.1,152.9 232.7,152.9 235.4,152.9 238.0,152.9 240.7,152.9 243.4,152.9 246.0,152.9 248.7,152.9 251.3,152.9 254.0,152.9 256.6,152.9 259.3,115.3 262.0,115.3 264.6,115.3 267.3,115.3 269.9,115.3 272.6,115.3 275.2,115.3 277.9,115.3 280.6,115.3 283.2,115.3 285.9,115.3 288.5,115.3 291.2,115.3 293.9,115.3 296.5,115.3 299.2,115.3 301.8,115.3 304.5,115.3 307.1,115.3 309.8,115.3 312.5,115.3 315.1,49.4 317.8,49.4 320.4,49.4 323.1,49.4 325.7,49.4 328.4,49.4 331.1,49.4 333.7,49.4 336.4,49.4 339.0,49.4 341.7,49.4 344.3,49.4 347.0,49.4 349.7,49.4 352.3,49.4 355.0,49.4 357.6,49.4 360.3,49.4 363.0,49.4 365.6,120.9 368.3,120.9 370.9,120.9 373.6,120.9 376.2,120.9 378.9,120.9 381.6,120.9 384.2,120.9 386.9,120.9 389.5,120.9 392.2,120.9 394.8,120.9 397.5,120.9 400.2,120.9 402.8,120.9 405.5,120.9 408.1,120.9 410.8,120.9 413.4,120.9 416.1,120.9 418.8,120.9 421.4,120.9 424.1,120.9 426.7,120.9 429.4,120.9 432.1,120.9 434.7,120.9 437.4,120.9 440.0,120.9 442.7,120.9 445.3,120.9 448.0,120.9" fill="none" stroke="#000000" stroke-width="1.0" stroke-dasharray="3,2"/><polyline points="52.0,69.3 54.7,68.5 57.3,67.9 60.0,66.8 62.6,66.5 65.3,65.5 67.9,66.0 70.6,64.9 73.3,65.7 75.9,65.0 78.6,64.8 81.2,65.2 83.9,64.6 86.6,65.4 89.2,65.3 91.9,65.6 94.5,65.3 97.2,66.0 99.8,66.4 102.5,66.4 105.2,66.3 107.8,65.8 110.5,64.7 113.1,65.1 115.8,65.7 118.4,65.3 121.1,65.3 123.8,76.4 126.4,86.0 129.1,94.6 131.7,103.0 134.4,110.3 137.0,117.3 139.7,122.7 142.4,127.8 145.0,131.8 147.7,136.1 150.3,140.8 153.0,142.9 155.7,145.9 158.3,149.3 161.0,152.5 163.6,153.8 166.3,155.5 168.9,156.8 171.6,158.5 174.3,159.6 176.9,160.7 179.6,161.6 182.2,162.3 184.9,163.6 187.5,164.3 190.2,165.6 192.9,166.4 195.5,167.0 198.2,164.8 200.8,163.5 203.5,162.3 206.1,161.4 208.8,159.8 211.5,159.4 214.1,157.3 216.8,157.5 219.4,156.6 222.1,156.0 224.8,155.7 227.4,154.8 230.1,154.7 232.7,153.6 235.4,153.3 238.0,153.5 240.7,153.7 243.4,154.5 246.0,154.2 248.7,154.3 251.3,154.7 254.0,155.2 256.6,154.9 259.3,151.0 262.0,146.8 264.6,143.4 267.3,139.9 269.9,138.1 272.6,136.7 275.2,134.4 277.9,132.2 280.6,130.0 283.2,129.0 285.9,127.6 288.5,125.6 291.2,124.4 293.9,123.7 296.5,122.1 299.2,121.3 301.8,121.2 304.5,120.0 307.1,120.4 309.8,120.0 312.5,118.9 315.1,112.2 317.8,105.7 320.4,99.3 323.1,94.1 325.7,89.2 328.4,84.2 331.1,80.1 333.7,76.1 336.4,73.7 339.0,71.6 341.7,68.9 344.3,67.3 347.0,65.5 349.7,63.8 352.3,62.7 355.0,61.3 357.6,60.3 360.3,59.6 363.0,57.6 365.6,64.1 368.3,69.5 370.9,75.1 373.6,79.9 376.2,84.5 378.9,88.1 381.6,91.2 384.2,95.2 386.9,97.7 389.5,100.8 392.2,103.0 394.8,103.5 397.5,105.4 400.2,107.0 402.8,108.3 405.5,109.6 408.1,111.5 410.8,113.0 413.4,112.8 416.1,114.2 418.8,115.1 421.4,116.2 424.1,117.2 426.7,117.6 429.4,118.6 432.1,119.7 434.7,119.3 437.4,120.1 440.0,120.3 442.7,120.4 445.3,120.5 448.0,121.6" fill="none" stroke="#999999" stroke-width="1.0" stroke-dasharray="2,2"/><polyline points="52.0,69.3 54.7,65.4 57.3,63.9 60.0,60.8 62.6,62.2 65.3,59.3 67.9,64.9 70.6,60.1 73.3,66.4 75.9,62.8 78.6,62.8 81.2,65.6 83.9,62.6 86.6,67.4 89.2,66.2 91.9,67.1 94.5,65.0 97.2,68.6 99.8,69.3 102.5,67.8 105.2,66.4 107.8,63.8 110.5,59.6 113.1,64.3 115.8,67.5 118.4,64.6 121.1,64.7 123.8,120.1 126.4,145.2 129.1,157.8 131.7,167.0 134.4,170.1 137.0,174.2 139.7,172.0 142.4,171.8 145.0,169.4 147.7,171.4 150.3,176.7 153.0,168.9 155.7,170.4 158.3,174.7 161.0,177.4 163.6,171.1 166.3,170.9 168.9,169.4 171.6,171.1 174.3,170.3 176.9,170.2 179.6,170.1 182.2,168.9 184.9,172.0 187.5,171.4 190.2,174.2 192.9,173.6 195.5,172.9 198.2,159.1 200.8,155.7 203.5,153.4 206.1,153.4 208.8,149.9 211.5,152.8 214.1,146.0 216.8,152.5 219.4,150.6 222.1,150.8 224.8,152.1 227.4,149.6 230.1,151.8 232.7,147.5 235.4,149.2 238.0,152.1 240.7,154.1 243.4,157.7 246.0,154.8 248.7,154.8 251.3,156.7 254.0,158.0 256.6,154.9 259.3,135.7 262.0,122.8 264.6,118.1 267.3,113.9 269.9,118.3 272.6,121.4 275.2,117.9 277.9,115.3 280.6,113.2 283.2,116.9 285.9,116.3 288.5,111.9 291.2,113.0 293.9,115.3 296.5,111.6 299.2,113.3 301.8,116.6 304.5,112.9 307.1,119.0 309.8,117.3 312.5,113.3 315.1,83.0 317.8,65.9 320.4,54.3 323.1,51.8 325.7,49.3 328.4,44.7 331.1,44.8 333.7,43.0 336.4,48.0 339.0,50.5 341.7,48.2 344.3,50.6 347.0,50.2 349.7,49.6 352.3,51.7 355.0,50.4 357.6,50.9 360.3,52.4 363.0,46.1 365.6,84.2 368.3,100.5 370.9,112.4 373.6,117.3 376.2,120.9 378.9,119.8 381.6,119.2 384.2,124.5 386.9,122.2 389.5,125.1 392.2,123.2 394.8,115.7 397.5,118.8 400.2,119.8 402.8,119.5 405.5,120.3 408.1,124.3 410.8,125.4 413.4,118.0 416.1,122.2 418.8,122.7 421.4,123.8 424.1,125.1 426.7,123.2 429.4,125.1 432.1,127.2 434.7,121.4 437.4,124.4 440.0,123.3 442.7,122.2 445.3,121.8 448.0,126.4" fill="none" stroke="#555555" stroke-width="1.2" stroke-dasharray="6,3"/><polyline points="52.0,69.3 54.7,67.1 57.3,65.6 60.0,62.3 62.6,62.7 65.3,60.2 67.9,62.2 70.6,60.0 73.3,62.8 75.9,62.4 78.6,62.4 81.2,64.0 83.9,63.4 86.6,66.2 89.2,65.9 91.9,66.5 94.5,65.8 97.2,67.7 99.8,68.4 102.5,67.9 105.2,67.5 107.8,66.1 110.5,62.0 113.1,63.6 115.8,64.8 118.4,64.5 121.1,64.5 123.8,151.9 126.4,165.7 129.1,168.9 131.7,174.2 134.4,173.4 137.0,176.7 139.7,172.4 142.4,172.0 145.0,169.5 147.7,171.4 150.3,177.2 153.0,172.2 155.7,172.2 158.3,174.6 161.0,176.8 163.6,175.2 166.3,174.3 168.9,172.3 171.6,172.4 174.3,171.6 176.9,171.1 179.6,170.8 182.2,169.8 184.9,170.7 187.5,170.8 190.2,172.0 192.9,172.2 195.5,172.3 198.2,159.1 200.8,155.7 203.5,153.3 206.1,153.4 208.8,150.0 211.5,152.2 214.1,145.8 216.8,149.4 219.4,149.2 222.1,149.6 224.8,150.0 227.4,149.6 230.1,150.3 232.7,148.7 235.4,149.1 238.0,150.3 240.7,152.0 243.4,155.9 246.0,154.7 248.7,154.7 251.3,156.0 254.0,157.2 256.6,156.0 259.3,133.4 262.0,118.0 264.6,115.2 267.3,111.8 269.9,117.4 272.6,120.1 275.2,117.7 277.9,115.4 280.6,113.5 283.2,115.7 285.9,115.7 288.5,112.5 291.2,113.0 293.9,114.0 296.5,112.1 299.2,112.8 301.8,114.0 304.5,113.2 307.1,116.9 309.8,116.6 312.5,115.6 315.1,71.9 317.8,55.4 320.4,46.4 323.1,48.5 325.7,47.5 328.4,42.8 331.1,44.0 333.7,42.4 336.4,47.0 339.0,48.8 341.7,47.8 344.3,48.8 347.0,48.9 349.7,48.9 352.3,49.9 355.0,49.8 357.6,50.1 360.3,51.1 363.0,48.4 365.6,100.7 368.3,111.9 370.9,120.6 373.6,121.5 376.2,123.5 378.9,120.6 381.6,119.5 384.2,125.3 386.9,122.7 389.5,125.3 392.2,123.7 394.8,121.4 397.5,121.4 400.2,121.4 402.8,121.0 405.5,121.0 408.1,122.6 410.8,123.7 413.4,120.4 416.1,121.1 418.8,121.5 421.4,122.3 424.1,123.5 426.7,123.0 429.4,124.2 432.1,126.0 434.7,124.8 437.4,125.2 440.0,124.8 442.7,124.0 445.3,123.3 448.0,124.6" fill="none" stroke="#1F5FBF" stroke-width="1.6" stroke-dasharray="none"/><line x1="52.0" y1="258" x2="74.0" y2="258" stroke="#C8C8C8" stroke-width="0.8" stroke-dasharray="none"/><text x="80.0" y="262">原始观测</text><line x1="250.0" y1="258" x2="272.0" y2="258" stroke="#000000" stroke-width="1.0" stroke-dasharray="3,2"/><text x="278.0" y="262">真实值</text><line x1="52.0" y1="273" x2="74.0" y2="273" stroke="#999999" stroke-width="1.0" stroke-dasharray="2,2"/><text x="80.0" y="277">固定 0.55 Hz</text><line x1="250.0" y1="273" x2="272.0" y2="273" stroke="#555555" stroke-width="1.2" stroke-dasharray="6,3"/><text x="278.0" y="277">固定 5 Hz</text><line x1="52.0" y1="288" x2="74.0" y2="288" stroke="#1F5FBF" stroke-width="1.6" stroke-dasharray="none"/><text x="80.0" y="292">One Euro</text></svg><figcaption><b>图 2</b>　表 3 所用合成轨迹的前 5 s。One Euro 滤波几乎立即跟上扫视，同时压制注视期间的噪声</figcaption></figure>
+
+<p>固定低截止频率虽稳定，但慢到扫视后 300 ms 仍未收敛；固定高截止频率反应快，却放过更多噪声。One Euro 滤波把原始噪声减半，同时在一帧之内完成响应（延迟分辨率受限于 33 ms 的帧间隔）。</p>
+<h3>5.5　漂移校正</h3>
+<p>对预测施加一个平滑、随位置变化、幅度 25–70 px 的漂移场。隐式校准事件在随机屏幕位置产生，残余噪声 12 px；其中 15% 的事件假定用户其实在看别处（每轴偏移 250–650 px）。在 9×6 网格上评估误差，重复 200 次取平均。</p>
+<p class="tcap"><b>表 4</b>　经过 $n$ 次隐式校准后的平均误差（px）</p>
+
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>$n=0$</th>
+<th>1</th>
+<th>2</th>
+<th>4</th>
+<th>8</th>
+<th>16</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>完整方法（式 5–6，320 px 门限）</td>
+<td>46.7</td>
+<td><strong>32.1</strong></td>
+<td><strong>27.1</strong></td>
+<td>23.1</td>
+<td>20.4</td>
+<td>18.7</td>
+</tr>
+<tr>
+<td>去掉异常值门限</td>
+<td>46.7</td>
+<td>62.2</td>
+<td>64.2</td>
+<td>65.9</td>
+<td>55.9</td>
+<td>48.6</td>
+</tr>
+<tr>
+<td>全局平均（无空间核）</td>
+<td>46.7</td>
+<td>31.2</td>
+<td>28.9</td>
+<td>26.7</td>
+<td>25.6</td>
+<td>24.8</td>
+</tr>
+<tr>
+<td>去掉收缩（$k=1$）</td>
+<td>46.7</td>
+<td>34.0</td>
+<td>27.2</td>
+<td><strong>21.9</strong></td>
+<td><strong>19.6</strong></td>
+<td><strong>18.1</strong></td>
+</tr>
+</tbody>
+</table>
+<figure><svg viewBox="0 0 460 286" xmlns="http://www.w3.org/2000/svg" font-family="Times New Roman, Songti SC, serif" font-size="12"><rect x="52" y="12" width="396" height="198" fill="none" stroke="#000" stroke-width="0.8"/><line x1="48" y1="210.0" x2="52" y2="210.0" stroke="#000" stroke-width="0.8"/><text x="46" y="214.0" text-anchor="end">0</text><line x1="48" y1="170.4" x2="52" y2="170.4" stroke="#000" stroke-width="0.8"/><text x="46" y="174.4" text-anchor="end">16</text><line x1="48" y1="130.8" x2="52" y2="130.8" stroke="#000" stroke-width="0.8"/><text x="46" y="134.8" text-anchor="end">32</text><line x1="48" y1="91.2" x2="52" y2="91.2" stroke="#000" stroke-width="0.8"/><text x="46" y="95.2" text-anchor="end">48</text><line x1="48" y1="51.6" x2="52" y2="51.6" stroke="#000" stroke-width="0.8"/><text x="46" y="55.6" text-anchor="end">64</text><line x1="48" y1="12.0" x2="52" y2="12.0" stroke="#000" stroke-width="0.8"/><text x="46" y="16.0" text-anchor="end">80</text><line x1="52.0" y1="210" x2="52.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="52.0" y="226" text-anchor="middle">0</text><line x1="101.5" y1="210" x2="101.5" y2="214" stroke="#000" stroke-width="0.8"/><text x="101.5" y="226" text-anchor="middle">2</text><line x1="151.0" y1="210" x2="151.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="151.0" y="226" text-anchor="middle">4</text><line x1="250.0" y1="210" x2="250.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="250.0" y="226" text-anchor="middle">8</text><line x1="448.0" y1="210" x2="448.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="448.0" y="226" text-anchor="middle">16</text><text x="250.0" y="246" text-anchor="middle">隐式校准事件数 n</text><text transform="translate(12 111.0) rotate(-90)" text-anchor="middle">平均误差 / px</text><polyline points="52.0,94.4 76.8,130.6 101.5,142.8 151.0,152.8 250.0,159.6 448.0,163.8" fill="none" stroke="#1F5FBF" stroke-width="1.8" stroke-dasharray="none"/><circle cx="52.0" cy="94.4" r="2.6" fill="#1F5FBF"/><circle cx="76.8" cy="130.6" r="2.6" fill="#1F5FBF"/><circle cx="101.5" cy="142.8" r="2.6" fill="#1F5FBF"/><circle cx="151.0" cy="152.8" r="2.6" fill="#1F5FBF"/><circle cx="250.0" cy="159.6" r="2.6" fill="#1F5FBF"/><circle cx="448.0" cy="163.8" r="2.6" fill="#1F5FBF"/><polyline points="52.0,94.4 76.8,56.1 101.5,51.2 151.0,46.9 250.0,71.5 448.0,89.8" fill="none" stroke="#000000" stroke-width="1.2" stroke-dasharray="6,3"/><circle cx="52.0" cy="94.4" r="2.6" fill="#000000"/><circle cx="76.8" cy="56.1" r="2.6" fill="#000000"/><circle cx="101.5" cy="51.2" r="2.6" fill="#000000"/><circle cx="151.0" cy="46.9" r="2.6" fill="#000000"/><circle cx="250.0" cy="71.5" r="2.6" fill="#000000"/><circle cx="448.0" cy="89.8" r="2.6" fill="#000000"/><polyline points="52.0,94.4 76.8,132.7 101.5,138.4 151.0,143.9 250.0,146.8 448.0,148.6" fill="none" stroke="#777777" stroke-width="1.2" stroke-dasharray="2,2"/><circle cx="52.0" cy="94.4" r="2.6" fill="#777777"/><circle cx="76.8" cy="132.7" r="2.6" fill="#777777"/><circle cx="101.5" cy="138.4" r="2.6" fill="#777777"/><circle cx="151.0" cy="143.9" r="2.6" fill="#777777"/><circle cx="250.0" cy="146.8" r="2.6" fill="#777777"/><circle cx="448.0" cy="148.6" r="2.6" fill="#777777"/><polyline points="52.0,94.4 76.8,125.9 101.5,142.6 151.0,155.7 250.0,161.5 448.0,165.3" fill="none" stroke="#1F5FBF" stroke-width="1.0" stroke-dasharray="4,2"/><circle cx="52.0" cy="94.4" r="2.6" fill="#1F5FBF"/><circle cx="76.8" cy="125.9" r="2.6" fill="#1F5FBF"/><circle cx="101.5" cy="142.6" r="2.6" fill="#1F5FBF"/><circle cx="151.0" cy="155.7" r="2.6" fill="#1F5FBF"/><circle cx="250.0" cy="161.5" r="2.6" fill="#1F5FBF"/><circle cx="448.0" cy="165.3" r="2.6" fill="#1F5FBF"/><line x1="52.0" y1="258" x2="74.0" y2="258" stroke="#1F5FBF" stroke-width="1.8" stroke-dasharray="none"/><text x="80.0" y="262">完整方法</text><line x1="250.0" y1="258" x2="272.0" y2="258" stroke="#000000" stroke-width="1.2" stroke-dasharray="6,3"/><text x="278.0" y="262">去掉 320 px 门限</text><line x1="52.0" y1="273" x2="74.0" y2="273" stroke="#777777" stroke-width="1.2" stroke-dasharray="2,2"/><text x="80.0" y="277">全局平均（无空间核）</text><line x1="250.0" y1="273" x2="272.0" y2="273" stroke="#1F5FBF" stroke-width="1.0" stroke-dasharray="4,2"/><text x="278.0" y="277">去掉收缩</text></svg><figcaption><b>图 3</b>　漂移校正误差随隐式校准事件数的变化（对应表 4，200 次重复取平均）</figcaption></figure>
+
+<p>完整方法在 16 次事件后把误差降低 60%。异常值门限不可或缺：去掉它后，“看别处时按键”的样本会让校正结果比不校正还差。样本积累到一定数量后空间核开始起作用（$n=16$ 时 18.7 px 对 24.8 px），因为单一全局偏移无法表达随位置变化的漂移。收缩因子在只有 1 个样本时有利（32.1 px 对 34.0 px），样本较多时略有代价（18.7 px 对 18.1 px），这是为会话初期的稳健性有意做出的取舍。</p>
+<h2>6　讨论与局限</h2>
+<p>LookAsk 的设计原则是：接受摄像头眼动的精度上限，把精度需求分配给最便宜的提供者——校准交给统计，漂移交给用户行为，噪声交给滤波，最后几十个像素交给语言线索，词级选择交给手。</p>
+<p>本文仍有以下局限：（1）全部定量结果来自合成数据，需要开展测量校准误差、漂移随时间变化与选择耗时的用户实验；（2）视线映射对特征是线性的，头部大幅运动时可能需要非线性核（如 RBF）或显式的头部姿态补偿；（3）隐式校准假设用户按键时正看着焦点，固定的 320 px 门限可改为基于中位数绝对偏差等自适应稳健准则；（4）关键词得分为人工规则，可改为学习得到或采用词频统计；（5）部分笔记本的摄像头“人物居中”功能会裁切画面，导致校准失效；（6）特征提取库采用 AGPL 许可，限制了再分发。</p>
+<h2>7　结论</h2>
+<p>本文介绍了 LookAsk 的算法链，它把段落级的摄像头视线转化为可用于大模型辅助阅读的词级指向。对偶岭回归配合分组交叉验证，实现了快速且评估诚实的个人校准；基于核的隐式再校准抑制了漂移；One Euro 滤波与 I-DT 检测产生稳定的注视；两级焦点与关键词吸附弥合了到具体词语的最后差距。直接运行生产代码的合成实验支持了上述各项设计决策。</p>
+<h2>代码可用性</h2>
+<p>全部算法实现于 LookAsk 仓库：<code>gaze/ridge.ts</code>（式 1–4）、<code>gaze/engine.ts</code>（式 5–6）、<code>gaze/filters.ts</code>（式 7–8 及 I-DT）、<code>focus/focus.ts</code>、<code>focus/magnet.ts</code> 与 <code>focus/snap.ts</code>（4.6 节）、<code>jev/jevBrain.ts</code>（4.7 节）。实验代码位于 <code>docs/算法论文/experiments</code>。</p>
+<h2>生成式人工智能使用声明</h2>
+<p>LookAsk 软件在开发过程中大量使用了 AI 编程工具；本文及实验脚本由 AI 模型协助起草，再由作者对照源代码核对。所有数值结果均由仓库中的脚本实际运行得到。</p>
+<h2>参考文献</h2>
+<ol class="refs">
+<li>PAPOUTSAKI A, SANGKLOY P, LASKEY J, et al. WebGazer: scalable webcam eye tracking using user interactions[C]//Proceedings of the 25th International Joint Conference on Artificial Intelligence (IJCAI). 2016: 3839-3845.</li>
+<li>KRAFKA K, KHOSLA A, KELLNHOFER P, et al. Eye tracking for everyone[C]//Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). 2016: 2176-2184.</li>
+<li>ZHANG X, SUGANO Y, FRITZ M, et al. Appearance-based gaze estimation in the wild[C]//Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). 2015: 4511-4520.</li>
+<li>CASIEZ G, ROUSSEL N, VOGEL D. 1€ filter: a simple speed-based low-pass filter for noisy input in interactive systems[C]//Proceedings of the SIGCHI Conference on Human Factors in Computing Systems (CHI). 2012: 2527-2530.</li>
+<li>SALVUCCI D D, GOLDBERG J H. Identifying fixations and saccades in eye-tracking protocols[C]//Proceedings of the 2000 Symposium on Eye Tracking Research &amp; Applications (ETRA). 2000: 71-78.</li>
+<li>ZHAI S, MORIMOTO C, IHDE S. Manual and gaze input cascaded (MAGIC) pointing[C]//Proceedings of the SIGCHI Conference on Human Factors in Computing Systems (CHI). 1999: 246-253.</li>
+<li>HOERL A E, KENNARD R W. Ridge regression: biased estimation for nonorthogonal problems[J]. Technometrics, 1970, 12(1): 55-67.</li>
+<li>SAUNDERS C, GAMMERMAN A, VOVK V. Ridge regression learning algorithm in dual variables[C]//Proceedings of the 15th International Conference on Machine Learning (ICML). 1998: 515-521.</li>
+<li>NADARAYA E A. On estimating regression[J]. Theory of Probability and Its Applications, 1964, 9(1): 141-142.</li>
+<li>WATSON G S. Smooth regression analysis[J]. Sankhyā: The Indian Journal of Statistics, Series A, 1964, 26(4): 359-372.</li>
+<li>KARTYNNIK Y, ABLAVATSKI A, GRISHCHENKO I, et al. Real-time facial surface geometry from monocular video on mobile GPUs[C]//CVPR Workshop on Computer Vision for Augmented and Virtual Reality. 2019. arXiv:1907.06724.</li>
+<li>HASTIE T, TIBSHIRANI R, FRIEDMAN J. The elements of statistical learning[M]. 2nd ed. New York: Springer, 2009.</li>
+<li>SUGANO Y, MATSUSHITA Y, SATO Y. Appearance-based gaze estimation using visual saliency[J]. IEEE Transactions on Pattern Analysis and Machine Intelligence, 2013, 35(2): 329-341.</li>
+<li>JACOB R J K. What you look at is what you get: eye movement-based interaction techniques[C]//Proceedings of the SIGCHI Conference on Human Factors in Computing Systems (CHI). 1990: 11-18.</li>
+<li>ROBERTS D R, BAHN V, CIUTI S, et al. Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure[J]. Ecography, 2017, 40(8): 913-929.</li>
+<li>GOLUB G H, VAN LOAN C F. Matrix computations[M]. 4th ed. Baltimore: Johns Hopkins University Press, 2013.</li>
+</ol></main>
+<script>renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],trust:true,strict:false});</script>
+</body></html>

@@ -1,0 +1,304 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>LookAsk</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>/* 期刊论文版式：A4、双栏、Times，参照 SCI 期刊（Elsevier / Springer 常见样式）的排版习惯 */
+@page { size: A4; margin: 20mm 17mm 20mm 17mm;
+  @top-left { content: "LookAsk Technical Report"; font: italic 8pt "Times New Roman", serif; color: #555; }
+  @top-right { content: "Look-and-Ask: word-level reading assistance from webcam gaze"; font: italic 8pt "Times New Roman", serif; color: #555; }
+  @bottom-center { content: counter(page); font: 9pt "Times New Roman", serif; }
+}
+body { font-family: "Times New Roman", Times, serif; font-size: 10pt; line-height: 1.38; color: #000; margin: 0; background: #fff; text-align: justify; hyphens: auto; }
+header { margin-bottom: 10pt; }
+.journal { font-size: 8.5pt; color: #444; border-bottom: 0.6pt solid #000; padding-bottom: 3pt; margin: 0 0 12pt; text-align: left; }
+.title { font-size: 17pt; line-height: 1.25; font-weight: bold; text-align: center; margin: 0 0 10pt; }
+.authors { text-align: center; font-size: 11pt; margin: 0 0 3pt; }
+.affil { text-align: center; font-size: 8.5pt; color: #333; margin: 0 0 12pt; }
+.abstract { border-top: 0.6pt solid #000; border-bottom: 0.6pt solid #000; padding: 7pt 0; font-size: 9.2pt; line-height: 1.4; }
+.abstract p { margin: 0 0 5pt; }
+.kw { margin-bottom: 0 !important; }
+.cols { column-count: 2; column-gap: 7mm; column-fill: auto; }
+h2 { font-size: 10.5pt; font-weight: bold; margin: 11pt 0 5pt; text-transform: uppercase; letter-spacing: .02em; break-after: avoid; }
+h3 { font-size: 10pt; font-weight: bold; font-style: italic; margin: 8pt 0 3pt; break-after: avoid; }
+p { margin: 0 0 5pt; text-indent: 0; }
+ol, ul { margin: 0 0 5pt; padding-left: 15pt; }
+li { margin-bottom: 2pt; }
+code { font-family: "Courier New", monospace; font-size: 8.8pt; }
+table { width: 100%; border-collapse: collapse; font-size: 8.4pt; margin: 3pt 0 9pt; break-inside: avoid; text-align: left; }
+thead th { border-top: 1pt solid #000; border-bottom: 0.6pt solid #000; font-weight: bold; padding: 2.5pt 3pt; }
+td { padding: 2pt 3pt; vertical-align: top; }
+tbody tr:last-child td { border-bottom: 1pt solid #000; }
+.tcap { font-size: 8.6pt; margin: 6pt 0 2pt; text-align: left; break-after: avoid; }
+figure { margin: 6pt 0 9pt; break-inside: avoid; }
+figure svg { width: 100%; height: auto; display: block; }
+figure.wide { column-span: all; margin: 4pt 0 10pt; }
+figcaption { font-size: 8.6pt; margin-top: 3pt; text-align: left; }
+.katex { font-size: 1.02em; }
+.katex-display { margin: 5pt 0; overflow: hidden; }
+.refs { font-size: 8.4pt; padding-left: 16pt; line-height: 1.32; }
+.refs li { margin-bottom: 2.5pt; }
+.title { text-wrap: balance; } p:has(code) { text-align: left; } .refs { text-align: left; }
+</style></head><body>
+<header><div class="front">
+<p class="journal">Technical Report · LookAsk Project · September 2026</p>
+<h1 class="title">Look-and-Ask: Word-Level Reading Assistance from Commodity Webcam Gaze via Dual Ridge Regression, Kernel Drift Correction and Gaze–Manual Refinement</h1>
+<p class="authors">Leo<sup>1</sup></p>
+<p class="affil"><sup>1</sup>Independent developer. Source code: <code>LookAsk</code> repository, <code>src/renderer/src</code>.</p>
+
+<div class="abstract">
+<p><b>Abstract</b> — Asking a large language model (LLM) about the passage one is reading still requires selecting, copying and pasting text. LookAsk removes this step by attaching “what the user is looking at” to every question, using only the built-in webcam of a laptop and a handheld Joy-Con controller. Commodity webcam gaze, however, is accurate only to the level of a paragraph. We present the algorithmic pipeline that turns this coarse signal into a word-level pointer. Gaze is regressed from ≈1650-dimensional appearance and landmark features with ridge regression solved in its dual form, and the regularisation strength is selected by leave-one-calibration-point-out cross-validation. Post-calibration drift is corrected online by a spatio-temporal Nadaraya–Watson estimator fed by implicit calibration events, with outlier gating and shrinkage. The signal is smoothed with a One Euro filter, segmented into fixations with a dispersion-threshold detector with hysteresis, and resolved to text through a two-level (soft/hard) focus model and a keyword-attraction heuristic. A cascaded judgement stage decides when the assistant should speak. In synthetic experiments that execute the production code, the dual solver fits a 408 × 1650 problem 4.2× faster than the primal Gram–Cholesky step alone; frame-level cross-validation underestimated out-of-sample error by 7.1×, versus 2.3× for grouped cross-validation; the One Euro filter reduced steady-state error from 40 px to 20.5 px with a 33 ms step latency; and drift correction reduced mean error from 46.7 px to 18.7 px after 16 implicit events, whereas omitting the outlier gate increased it to 48.6 px.</p>
+<p class="kw"><b>Keywords</b> — webcam eye tracking; ridge regression; kernel methods; implicit calibration; adaptive filtering; fixation detection; gaze-based interaction; LLM reading assistant</p>
+</div>
+</div>
+</header>
+<main class="cols"><h2>1. Introduction</h2>
+<p>Reading technical material with an LLM at hand is now common, but the interaction is clumsy: the reader must leave the text, select the relevant passage, copy it into a chat window and describe what is unclear. Eye tracking offers a direct answer to the question <em>which passage is the user asking about?</em> Dedicated eye trackers are accurate but add hardware; webcam-based trackers [1–3] run on any laptop but typically reach errors of tens to more than one hundred screen points, which is sufficient to identify a paragraph but not a word.</p>
+<p>LookAsk is a macOS desktop application in which the left pane shows reading material (PDF, Markdown, a terminal, or any application in a global overlay mode) and the right pane hosts a conversational agent. When the user asks a question, the passage under gaze is attached as context. Rather than attempting to push webcam accuracy towards its physical limit, the system is designed as a chain in which each stage compensates for the residual error of the previous one (Fig. 1).</p>
+<p>The contributions of this report are:</p>
+<ol>
+<li>A dual-form ridge regression gaze mapper with grouped (leave-one-calibration-point-out) cross-validation that selects the regulariser and reports an honest error estimate (Section 4.2–4.3).</li>
+<li>An online drift-correction scheme that converts ordinary confirmation presses into implicit calibration samples and combines them with a spatio-temporal kernel, an outlier gate and shrinkage (Section 4.4).</li>
+<li>A gaze-to-text layer that couples paragraph-level gaze with manual word-level refinement and a keyword-attraction heuristic with hysteresis (Section 4.6).</li>
+<li>A cascaded decision stage that keeps LLM calls rare by placing cheap local rules and a probabilistic judgement model before generation (Section 4.7).</li>
+<li>Reproducible synthetic experiments that run the production implementation (Section 5).</li>
+</ol>
+<h2>2. Related Work</h2>
+<p><strong>Webcam gaze estimation.</strong> WebGazer [1] maps eye-patch features to screen coordinates with regularised linear regression and continuously adds training samples from mouse clicks. Appearance-based deep models such as iTracker [2] and MPIIGaze [3] learn person-independent mappings from large datasets; they generalise across users but still benefit from per-user calibration. Visual saliency has also been used to obtain calibration targets implicitly [13]. LookAsk follows the lightweight regression line of work and uses MediaPipe face landmarks [11] to obtain stable eye regions and head pose.</p>
+<p><strong>Regularised regression and model selection.</strong> Ridge regression [7] and its dual (kernel) formulation [8] are standard; when features outnumber samples the dual form is computationally preferable. Cross-validation on data with group structure must hold out whole groups to avoid optimistic estimates [12, 15].</p>
+<p><strong>Signal processing for pointing and gaze.</strong> The One Euro filter [4] adapts its cut-off frequency to signal speed and is widely used for noisy pointing input. Dispersion-threshold identification (I-DT) [5] is a classical method for separating fixations from saccades.</p>
+<p><strong>Gaze–manual interaction.</strong> Using gaze alone for selection suffers from the “Midas touch” problem [14]. MAGIC pointing [6] cascades gaze for coarse positioning with manual input for fine selection; LookAsk adopts this principle with a game controller instead of a mouse.</p>
+<h2>3. System Overview</h2>
+<figure class="wide"><svg viewBox="0 0 1000 170" xmlns="http://www.w3.org/2000/svg" font-family="Times New Roman, serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker></defs><rect x="10" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="69.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">Webcam</text><text x="69.0" y="57" font-size="12" text-anchor="middle" fill="#444">1280×720, 30 Hz</text><rect x="142" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="201.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">Face landmarks</text><text x="201.0" y="57" font-size="12" text-anchor="middle" fill="#444">478 pts [11]</text><rect x="274" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="333.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">Features</text><text x="333.0" y="57" font-size="12" text-anchor="middle" fill="#444">d ≈ 1650</text><rect x="406" y="20" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="465.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">Dual ridge</text><text x="465.0" y="57" font-size="12" text-anchor="middle" fill="#444">Eqs. 1–4</text><rect x="538" y="20" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="597.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">Drift correction</text><text x="597.0" y="57" font-size="12" text-anchor="middle" fill="#444">Eqs. 5–6</text><rect x="670" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="729.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">One Euro</text><text x="729.0" y="57" font-size="12" text-anchor="middle" fill="#444">Eqs. 7–8</text><rect x="802" y="20" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="861.0" y="40" font-size="14" text-anchor="middle" font-weight="bold">I-DT</text><text x="861.0" y="57" font-size="12" text-anchor="middle" fill="#444">fixations</text><rect x="802" y="110" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="861.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">Focus + magnet</text><text x="861.0" y="147" font-size="12" text-anchor="middle" fill="#444">Sec. 4.6</text><rect x="670" y="110" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="729.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">Context</text><text x="729.0" y="147" font-size="12" text-anchor="middle" fill="#444">focused passage</text><rect x="538" y="110" width="118" height="46" rx="6" fill="#EAF3FF" stroke="#1F5FBF" stroke-width="1.2"/><text x="597.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">Cascade</text><text x="597.0" y="147" font-size="12" text-anchor="middle" fill="#444">Sec. 4.7</text><rect x="406" y="110" width="118" height="46" rx="6" fill="#F4F4F4" stroke="#888" stroke-width="1.2"/><text x="465.0" y="130" font-size="14" text-anchor="middle" font-weight="bold">LLM</text><text x="465.0" y="147" font-size="12" text-anchor="middle" fill="#444">answer</text><line x1="129" y1="43" x2="141" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="261" y1="43" x2="273" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="393" y1="43" x2="405" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="525" y1="43" x2="537" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="657" y1="43" x2="669" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="789" y1="43" x2="801" y2="43" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="861.0" y1="67" x2="861.0" y2="108" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="801" y1="133" x2="789" y2="133" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="669" y1="133" x2="657" y2="133" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><line x1="537" y1="133" x2="525" y2="133" stroke="#444" stroke-width="1.2" marker-end="url(#ah)"/><text x="10" y="92" font-size="12" fill="#1F5FBF">Blue: contributions of this work · Grey: existing components or plumbing</text></svg><figcaption><b>Fig. 1.</b> Processing pipeline of LookAsk. Top row: gaze estimation in screen coordinates; bottom row (right to left): gaze-to-text resolution and the decision stage that forwards the focused passage to the LLM.</figcaption></figure>
+
+<p>The renderer process (React) runs the gaze engine, focus controller and chat interface; ridge fitting runs in a Web Worker. The Electron main process owns LLM access and settings, and a native Swift helper reads raw Joy-Con HID reports and provides speech recognition, OCR and accessibility text extraction. All gaze outputs are in screen coordinates.</p>
+<h2>4. Methods</h2>
+<h3>4.1 Face landmarks and features</h3>
+<p>Each camera frame (1280 × 720, ≈30 Hz) is processed by the MediaPipe Face Landmarker [11], which returns 478 three-dimensional landmarks (indices 468 and 473 are the iris centres), 52 blendshape coefficients and a head-pose transform. The open-source RealEye feature extractor (AGPL-3.0) crops both eye regions to 40 × 20 grey-scale patches and concatenates them with landmark geometry, blendshapes and head pose, yielding a feature vector $\mathbf{x}\in\mathbb{R}^{d}$ with $d\approx1650$. Frames with a blink coefficient above 0.45 are skipped at run time (below 0.4 is required during calibration). This stage uses existing components and is not a contribution of this work.</p>
+<h3>4.2 Dual ridge regression</h3>
+<p>During calibration the user fixates 9 or 17 targets for 850 ms each, yielding $N\approx400$ frames $\{(\mathbf{x}_i,\mathbf{t}_i)\}$. With centred features $X\in\mathbb{R}^{N\times d}$ and centred targets $\mathbf{y}$, one model per screen axis solves</p>
+<p>$$\min_{\boldsymbol\beta}\ \|\mathbf{y}-X\boldsymbol\beta\|^2+\lambda\|\boldsymbol\beta\|^2 . \tag{1}$$</p>
+<p>The primal solution $\boldsymbol\beta=(X^\top X+\lambda I_d)^{-1}X^\top\mathbf{y}$ requires a $d\times d$ system. Using the identity $(X^\top X+\lambda I_d)^{-1}X^\top = X^\top(XX^\top+\lambda I_N)^{-1}$, the equivalent dual solution is</p>
+<p>$$\boldsymbol\alpha=(K+\lambda I_N)^{-1}\mathbf{y},\qquad \boldsymbol\beta=X^\top\boldsymbol\alpha , \tag{2}$$</p>
+<p>where $K=XX^\top$ is the $N\times N$ Gram matrix. Since $K+\lambda I_N$ is symmetric positive definite, it is factorised as $LL^\top$ by Cholesky decomposition [16] and solved by forward and back substitution; if factorisation fails numerically, $\lambda$ is multiplied by 10 and the step repeated. Prediction for a new frame is</p>
+<p>$$\hat{t}_x=\bar{t}_x+(\mathbf{x}-\bar{\mathbf{x}})^\top\boldsymbol\beta_x , \tag{3}$$</p>
+<p>a single $d$-dimensional dot product per axis. For $d\gg N$ the dual construction costs $O(N^2d+N^3/3)$ versus $O(Nd^2+d^3/3)$ for the primal (Table 1).</p>
+<h3>4.3 Grouped cross-validation</h3>
+<p>The regulariser is chosen from $\lambda\in\{3\times10^{-4},3\times10^{-3},3\times10^{-2},3\times10^{-1}\}\cdot\overline{\operatorname{diag}(K)}$, scaling by the mean Gram diagonal to make the grid invariant to feature scale. Frames recorded at the same target are nearly identical, so leaving out single frames would leave their near-duplicates in the training set. We therefore hold out all frames of one calibration point at a time (leave-one-group-out) [15]. For each fold the training sub-matrix of $K$ is re-factorised, and the error is averaged per frame rather than per point, matching run-time behaviour:</p>
+<p>$$\mathrm{CV}(\lambda)=\frac{1}{N}\sum_{g}\sum_{i\in g}\big\|\hat{\mathbf{t}}^{(-g)}_i(\lambda)-\mathbf{t}_i\big\|_2 . \tag{4}$$</p>
+<p>The minimiser is refitted on all data and its error $\mathrm{CV}(\lambda^\ast)$ is shown to the user, optionally converted to visual angle as $\theta=\arctan(\mathrm{px}\times0.023\,\mathrm{cm}/55\,\mathrm{cm})$. Cross-validation is skipped when fewer than five points are available.</p>
+<h3>4.4 Implicit calibration and kernel drift correction</h3>
+<p><strong>Implicit samples.</strong> When the user confirms a hard focus with the A, X or Y button, we assume they are looking at it. The residual $\mathbf{r}_i=\mathbf{t}_i-\mathbf{p}_i$ between the focus centre $\mathbf{t}_i$ and the mean raw prediction over the preceding 450 ms $\mathbf{p}_i$ is stored with weight $w^0_i=0.6$, provided $\|\mathbf{r}_i\|&lt;320$ px; larger residuals indicate that the user was not looking at the focus and are discarded. An explicit drift-correction command stores a residual with weight 2. At most 16 residuals are retained.</p>
+<p><strong>Estimator.</strong> For a new prediction $\mathbf{p}$, each residual receives a spatio-temporal weight</p>
+<p>$$w_i(\mathbf{p})=w^0_i\exp\!\Big(-\frac{\|\mathbf{p}_i-\mathbf{p}\|^2}{2\sigma^2}\Big)\exp\!\Big(-\frac{t-\tau_i}{T}\Big), \tag{5}$$</p>
+<p>with $\sigma=520$ pt and $T=20$ min, and the correction is a Nadaraya–Watson estimate [9, 10] with shrinkage:</p>
+<p>$$\begin{gathered}\Delta(\mathbf{p})=k\,\frac{\sum_i w_i(\mathbf{p})\,\mathbf{r}_i}{\sum_i w_i(\mathbf{p})},\\ k=\frac{\sum_i w_i(\mathbf{p})}{\sum_i w_i(\mathbf{p})+0.35}.\end{gathered} \tag{6}$$</p>
+<p>The kernel allows a spatially varying offset field; the factor $k$ shrinks the correction towards zero when evidence is scarce or distant.</p>
+<h3>4.5 Smoothing and fixation detection</h3>
+<p>The corrected signal is filtered per axis with a One Euro filter [4]. An exponential smoother with factor</p>
+<p>$$\alpha=\frac{1}{1+\tau/\Delta t},\qquad \tau=\frac{1}{2\pi f_c} \tag{7}$$</p>
+<p>uses an adaptive cut-off</p>
+<p>$$f_c=f_{c,\min}+\beta\,|\dot{\hat{x}}| , \tag{8}$$</p>
+<p>where the speed estimate is itself low-pass filtered at 1 Hz. We use $f_{c,\min}=0.55$ Hz and $\beta=0.0045$; a user-facing smoothness slider $v\in[0,1]$ sets $f_{c,\min}=\max(0.12,\,1.4-1.2v)$.</p>
+<p>Fixations are detected online with I-DT [5]: a fixation starts when at least three samples within the last 140 ms lie within 95 px of their centroid, continues while new samples stay within $1.3\times95\approx124$ px of the running centroid, and ends otherwise. The different start and end radii provide hysteresis against boundary jitter.</p>
+<h3>4.6 From gaze to text</h3>
+<p><strong>Two-level focus.</strong> A <em>soft</em> focus follows fixations at paragraph granularity. The first deflection of the right stick converts it into a <em>hard</em> focus that moves word by word or line by line under manual control, with granularity cycling through word, sentence, paragraph and section (segmentation by <code>Intl.Segmenter</code>, which uses dictionary segmentation for Chinese). Looking elsewhere for more than 0.8 s, or pressing the stick, returns control to gaze. The screen is split into a reading side and an answer side; gaze is only interpreted on the active side, and fixations within 70 pt of the border are pulled back.</p>
+<p><strong>Keyword attraction.</strong> Around the gaze point, probe positions are laid on a grid and mapped to words via <code>caretRangeFromPoint</code>. Each word receives a keyword score $s\in[0,1]$ from lexical cues (acronyms 0.9; alphanumeric or camel-case tokens 0.85; hyphenated tokens 0.72; Chinese words of four or more characters 0.8; formulae 0.95; +0.4 inside emphasis; 0 for stop words), and a weight</p>
+<p>$$W=s\cdot\max\!\Big(0,\,1-\min\!\big(1,\tfrac{d}{r}\big)^{1.5}\Big) , \tag{9}$$</p>
+<p>where $d$ is the distance to the word box and $r$ the search radius. A new candidate replaces the current one only if its weight exceeds it by a factor <code>switchRatio</code>, attraction is released beyond a distance <code>release</code>, and it is suspended during saccades. All nine parameters are linear functions of a single strength $k\in[0,1]$ (default 0.7), e.g. $r=40+100k$. The gaze indicator is a 36-node mass–spring ring whose rest shape morphs into a superellipse $|x/w|^5+|y/h|^5=1$ around the attracted word, making the attraction state visible.</p>
+<h3>4.7 Cascaded decision stage</h3>
+<p>To decide when the assistant should volunteer help, LookAsk uses a three-level cascade: (i) zero-cost local rules (ignore short passages, dwell below 1.5 s, or repeated prompts within 20 s); (ii) a low-cost judgement model that answers multiple-choice or probability questions (difficulty, “is the reader stuck?”, intent, need for an image, need for fact checking); (iii) the LLM, called only when (ii) requires it. Numerical signals are discretised into verbal levels before being passed to the judgement model (e.g. dwell &lt; 3 s “very short”, 3–8 s “normal”, 8–20 s “long”, &gt; 20 s “very long”). A passage is considered for an unprompted explanation when dwell ≥ 9 s or revisits ≥ 3 and difficulty ≥ 1.4, and the suggestion is shown if the judged probability is ≥ 0.65. Because gaze resolves only paragraphs, the focused paragraph is also split into candidate sentences, and the judgement model selects the sentence referred to by the user’s utterance (reference resolution). Judgements are cached by content hash and subject to a daily token budget.</p>
+<h2>5. Experiments</h2>
+<h3>5.1 Setup</h3>
+<p>No human-subject study was conducted for this report. All experiments below are <strong>synthetic</strong> and execute the production functions <code>fitRidge</code>, <code>predictRidge</code> (ridge.ts) and <code>OneEuro</code> (filters.ts); the drift estimator re-implements Eqs. (5)–(6) exactly as in engine.ts. Synthetic features are generated by passing a quadratic encoding of the target position through a fixed random projection and a tanh non-linearity ($d=1650$), adding a per-calibration-point nuisance term (modelling head pose and eye micro-offsets that are shared by all frames of a point) and independent per-frame noise. The 17-point calibration layout of the application is used. A fixed random seed makes all results reproducible (<code>docs/算法论文/experiments</code>); timings were measured single-threaded in Node.js 22 on an Apple-silicon MacBook.</p>
+<h3>5.2 Computational cost of the dual solver</h3>
+<p class="tcap"><b>Table 1.</b> Fitting cost for $N=408$ frames (17 points × 24 frames) and $d=1650$. Times are medians of three runs and vary by a few percent between executions; the primal time covers only Gram construction and Cholesky factorisation.</p>
+
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Floating-point operations</th>
+<th>Time (ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primal, $d\times d$ system</td>
+<td>$1.11\times10^{9}+1.50\times10^{9}$</td>
+<td>1192</td>
+</tr>
+<tr>
+<td>Dual, $N\times N$ system, one $\lambda$</td>
+<td>$2.75\times10^{8}+2.26\times10^{7}$</td>
+<td>283</td>
+</tr>
+<tr>
+<td>Dual, 4 $\lambda$ × 17-fold grouped CV</td>
+<td>—</td>
+<td>719</td>
+</tr>
+</tbody>
+</table>
+<p>The dual solver was 4.2× faster than the primal factorisation step alone, and the complete model selection with cross-validation (68 additional factorisations) finished in about 0.7 s, fast enough to run at the end of calibration without noticeable delay.</p>
+<h3>5.3 Bias of cross-validation estimates</h3>
+<p>We generated three calibration sessions (17 points × 12 frames) and compared the cross-validated error of the selected model under frame-level leave-one-out and under grouped leave-one-point-out with its true error on 200 unseen random screen positions.</p>
+<p class="tcap"><b>Table 2.</b> Cross-validated versus true error (px).</p>
+
+<table>
+<thead>
+<tr>
+<th>Session</th>
+<th>Frame-level CV</th>
+<th>Grouped CV (ours)</th>
+<th>True error on unseen positions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>5.1</td>
+<td>17.3</td>
+<td>34.4</td>
+</tr>
+<tr>
+<td>2</td>
+<td>4.7</td>
+<td>15.3</td>
+<td>50.9</td>
+</tr>
+<tr>
+<td>3</td>
+<td>6.0</td>
+<td>15.6</td>
+<td>26.6</td>
+</tr>
+<tr>
+<td>Mean</td>
+<td>5.3</td>
+<td>16.1</td>
+<td>37.3</td>
+</tr>
+</tbody>
+</table>
+<p>Frame-level CV underestimated the true error by a factor of 7.1 on average, grouped CV by 2.3. Grouped CV is therefore substantially more honest, although it remains optimistic because unseen positions also include locations outside the convex hull of the calibration grid and the non-linearity of the synthetic mapping.</p>
+<h3>5.4 One Euro filtering</h3>
+<p>A one-dimensional gaze trace was simulated at 30 Hz with 12 fixations of 600–1200 ms at random positions and additive Gaussian noise ($\sigma=40$ px). We report the RMS error from 300 ms after each fixation onset (steady state) and the median time to cover 90% of each saccade.</p>
+<p class="tcap"><b>Table 3.</b> Filter comparison on the synthetic trace (raw noise 40 px).</p>
+
+<table>
+<thead>
+<tr>
+<th>Filter</th>
+<th>Steady-state RMS error (px)</th>
+<th>90% step latency (ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fixed cut-off 0.55 Hz</td>
+<td>90.0</td>
+<td>700</td>
+</tr>
+<tr>
+<td>Fixed cut-off 5 Hz</td>
+<td>23.9</td>
+<td>67</td>
+</tr>
+<tr>
+<td>One Euro, $f_{c,\min}=0.55$ Hz, $\beta=0.0045$</td>
+<td><strong>20.5</strong></td>
+<td><strong>33</strong></td>
+</tr>
+</tbody>
+</table>
+<figure><svg viewBox="0 0 460 301" xmlns="http://www.w3.org/2000/svg" font-family="Times New Roman, serif" font-size="12"><rect x="52" y="12" width="396" height="198" fill="none" stroke="#000" stroke-width="0.8"/><line x1="48" y1="210.0" x2="52" y2="210.0" stroke="#000" stroke-width="0.8"/><text x="46" y="214.0" text-anchor="end">0</text><line x1="48" y1="170.4" x2="52" y2="170.4" stroke="#000" stroke-width="0.8"/><text x="46" y="174.4" text-anchor="end">300</text><line x1="48" y1="130.8" x2="52" y2="130.8" stroke="#000" stroke-width="0.8"/><text x="46" y="134.8" text-anchor="end">600</text><line x1="48" y1="91.2" x2="52" y2="91.2" stroke="#000" stroke-width="0.8"/><text x="46" y="95.2" text-anchor="end">900</text><line x1="48" y1="51.6" x2="52" y2="51.6" stroke="#000" stroke-width="0.8"/><text x="46" y="55.6" text-anchor="end">1200</text><line x1="48" y1="12.0" x2="52" y2="12.0" stroke="#000" stroke-width="0.8"/><text x="46" y="16.0" text-anchor="end">1500</text><line x1="52.0" y1="210" x2="52.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="52.0" y="226" text-anchor="middle">0</text><line x1="131.7" y1="210" x2="131.7" y2="214" stroke="#000" stroke-width="0.8"/><text x="131.7" y="226" text-anchor="middle">1</text><line x1="211.5" y1="210" x2="211.5" y2="214" stroke="#000" stroke-width="0.8"/><text x="211.5" y="226" text-anchor="middle">2</text><line x1="291.2" y1="210" x2="291.2" y2="214" stroke="#000" stroke-width="0.8"/><text x="291.2" y="226" text-anchor="middle">3</text><line x1="370.9" y1="210" x2="370.9" y2="214" stroke="#000" stroke-width="0.8"/><text x="370.9" y="226" text-anchor="middle">4</text><line x1="450.7" y1="210" x2="450.7" y2="214" stroke="#000" stroke-width="0.8"/><text x="450.7" y="226" text-anchor="middle">5</text><text x="250.0" y="246" text-anchor="middle">Time (s)</text><text transform="translate(12 111.0) rotate(-90)" text-anchor="middle">Horizontal gaze (px)</text><polyline points="52.0,69.3 54.7,61.7 57.3,62.5 60.0,57.9 62.6,63.5 65.3,56.6 67.9,70.2 70.6,55.5 73.3,72.5 75.9,59.3 78.6,62.9 81.2,68.3 83.9,59.8 86.6,72.0 89.2,65.1 91.9,68.0 94.5,63.0 97.2,72.0 99.8,70.0 102.5,66.3 105.2,65.1 107.8,61.4 110.5,55.6 113.1,68.8 115.8,70.6 118.4,61.8 121.1,64.9 123.8,173.0 126.4,169.1 129.1,169.8 131.7,175.9 134.4,173.1 137.0,178.1 139.7,169.9 142.4,171.7 145.0,167.2 147.7,173.2 150.3,181.8 153.0,161.3 155.7,171.9 158.3,178.8 161.0,180.0 163.6,165.0 166.3,170.7 168.9,167.9 171.6,172.8 174.3,169.5 176.9,170.0 179.6,170.0 182.2,167.8 184.9,174.9 187.5,170.9 190.2,176.9 192.9,173.0 195.5,172.3 198.2,145.8 200.8,152.5 203.5,151.2 206.1,153.5 208.8,146.6 211.5,155.6 214.1,139.6 216.8,158.7 219.4,148.7 222.1,150.9 224.8,153.3 227.4,147.3 230.1,153.9 232.7,143.4 235.4,150.9 238.0,154.8 240.7,156.0 243.4,161.2 246.0,152.1 248.7,154.9 251.3,158.5 254.0,159.2 256.6,152.0 259.3,117.3 262.0,110.4 264.6,113.6 267.3,109.9 269.9,122.6 272.6,124.3 275.2,114.6 277.9,112.7 280.6,111.2 283.2,120.4 285.9,115.8 288.5,107.7 291.2,114.0 293.9,117.4 296.5,108.1 299.2,115.0 301.8,119.7 304.5,109.5 307.1,124.8 309.8,115.7 312.5,109.5 315.1,54.0 317.8,49.7 320.4,43.2 323.1,49.4 325.7,47.0 328.4,40.3 331.1,44.8 333.7,41.2 336.4,52.9 339.0,52.9 341.7,45.9 344.3,53.0 347.0,49.8 349.7,49.0 352.3,53.8 355.0,49.1 357.6,51.5 360.3,53.9 363.0,40.0 365.6,120.6 368.3,116.0 370.9,123.8 373.6,121.9 376.2,124.4 378.9,118.8 381.6,118.6 384.2,129.5 386.9,120.0 389.5,127.9 392.2,121.4 394.8,108.5 397.5,121.8 400.2,120.8 402.8,119.3 405.5,120.9 408.1,128.1 410.8,126.5 413.4,110.9 416.1,126.3 418.8,123.2 421.4,124.9 424.1,126.2 426.7,121.4 429.4,127.0 432.1,129.3 434.7,115.7 437.4,127.3 440.0,122.3 442.7,121.2 445.3,121.4 448.0,130.8" fill="none" stroke="#C8C8C8" stroke-width="0.8" stroke-dasharray="none"/><polyline points="52.0,63.5 54.7,63.5 57.3,63.5 60.0,63.5 62.6,63.5 65.3,63.5 67.9,63.5 70.6,63.5 73.3,63.5 75.9,63.5 78.6,63.5 81.2,63.5 83.9,63.5 86.6,63.5 89.2,63.5 91.9,63.5 94.5,63.5 97.2,63.5 99.8,63.5 102.5,63.5 105.2,63.5 107.8,63.5 110.5,63.5 113.1,63.5 115.8,63.5 118.4,63.5 121.1,63.5 123.8,172.0 126.4,172.0 129.1,172.0 131.7,172.0 134.4,172.0 137.0,172.0 139.7,172.0 142.4,172.0 145.0,172.0 147.7,172.0 150.3,172.0 153.0,172.0 155.7,172.0 158.3,172.0 161.0,172.0 163.6,172.0 166.3,172.0 168.9,172.0 171.6,172.0 174.3,172.0 176.9,172.0 179.6,172.0 182.2,172.0 184.9,172.0 187.5,172.0 190.2,172.0 192.9,172.0 195.5,172.0 198.2,152.9 200.8,152.9 203.5,152.9 206.1,152.9 208.8,152.9 211.5,152.9 214.1,152.9 216.8,152.9 219.4,152.9 222.1,152.9 224.8,152.9 227.4,152.9 230.1,152.9 232.7,152.9 235.4,152.9 238.0,152.9 240.7,152.9 243.4,152.9 246.0,152.9 248.7,152.9 251.3,152.9 254.0,152.9 256.6,152.9 259.3,115.3 262.0,115.3 264.6,115.3 267.3,115.3 269.9,115.3 272.6,115.3 275.2,115.3 277.9,115.3 280.6,115.3 283.2,115.3 285.9,115.3 288.5,115.3 291.2,115.3 293.9,115.3 296.5,115.3 299.2,115.3 301.8,115.3 304.5,115.3 307.1,115.3 309.8,115.3 312.5,115.3 315.1,49.4 317.8,49.4 320.4,49.4 323.1,49.4 325.7,49.4 328.4,49.4 331.1,49.4 333.7,49.4 336.4,49.4 339.0,49.4 341.7,49.4 344.3,49.4 347.0,49.4 349.7,49.4 352.3,49.4 355.0,49.4 357.6,49.4 360.3,49.4 363.0,49.4 365.6,120.9 368.3,120.9 370.9,120.9 373.6,120.9 376.2,120.9 378.9,120.9 381.6,120.9 384.2,120.9 386.9,120.9 389.5,120.9 392.2,120.9 394.8,120.9 397.5,120.9 400.2,120.9 402.8,120.9 405.5,120.9 408.1,120.9 410.8,120.9 413.4,120.9 416.1,120.9 418.8,120.9 421.4,120.9 424.1,120.9 426.7,120.9 429.4,120.9 432.1,120.9 434.7,120.9 437.4,120.9 440.0,120.9 442.7,120.9 445.3,120.9 448.0,120.9" fill="none" stroke="#000000" stroke-width="1.0" stroke-dasharray="3,2"/><polyline points="52.0,69.3 54.7,68.5 57.3,67.9 60.0,66.8 62.6,66.5 65.3,65.5 67.9,66.0 70.6,64.9 73.3,65.7 75.9,65.0 78.6,64.8 81.2,65.2 83.9,64.6 86.6,65.4 89.2,65.3 91.9,65.6 94.5,65.3 97.2,66.0 99.8,66.4 102.5,66.4 105.2,66.3 107.8,65.8 110.5,64.7 113.1,65.1 115.8,65.7 118.4,65.3 121.1,65.3 123.8,76.4 126.4,86.0 129.1,94.6 131.7,103.0 134.4,110.3 137.0,117.3 139.7,122.7 142.4,127.8 145.0,131.8 147.7,136.1 150.3,140.8 153.0,142.9 155.7,145.9 158.3,149.3 161.0,152.5 163.6,153.8 166.3,155.5 168.9,156.8 171.6,158.5 174.3,159.6 176.9,160.7 179.6,161.6 182.2,162.3 184.9,163.6 187.5,164.3 190.2,165.6 192.9,166.4 195.5,167.0 198.2,164.8 200.8,163.5 203.5,162.3 206.1,161.4 208.8,159.8 211.5,159.4 214.1,157.3 216.8,157.5 219.4,156.6 222.1,156.0 224.8,155.7 227.4,154.8 230.1,154.7 232.7,153.6 235.4,153.3 238.0,153.5 240.7,153.7 243.4,154.5 246.0,154.2 248.7,154.3 251.3,154.7 254.0,155.2 256.6,154.9 259.3,151.0 262.0,146.8 264.6,143.4 267.3,139.9 269.9,138.1 272.6,136.7 275.2,134.4 277.9,132.2 280.6,130.0 283.2,129.0 285.9,127.6 288.5,125.6 291.2,124.4 293.9,123.7 296.5,122.1 299.2,121.3 301.8,121.2 304.5,120.0 307.1,120.4 309.8,120.0 312.5,118.9 315.1,112.2 317.8,105.7 320.4,99.3 323.1,94.1 325.7,89.2 328.4,84.2 331.1,80.1 333.7,76.1 336.4,73.7 339.0,71.6 341.7,68.9 344.3,67.3 347.0,65.5 349.7,63.8 352.3,62.7 355.0,61.3 357.6,60.3 360.3,59.6 363.0,57.6 365.6,64.1 368.3,69.5 370.9,75.1 373.6,79.9 376.2,84.5 378.9,88.1 381.6,91.2 384.2,95.2 386.9,97.7 389.5,100.8 392.2,103.0 394.8,103.5 397.5,105.4 400.2,107.0 402.8,108.3 405.5,109.6 408.1,111.5 410.8,113.0 413.4,112.8 416.1,114.2 418.8,115.1 421.4,116.2 424.1,117.2 426.7,117.6 429.4,118.6 432.1,119.7 434.7,119.3 437.4,120.1 440.0,120.3 442.7,120.4 445.3,120.5 448.0,121.6" fill="none" stroke="#999999" stroke-width="1.0" stroke-dasharray="2,2"/><polyline points="52.0,69.3 54.7,65.4 57.3,63.9 60.0,60.8 62.6,62.2 65.3,59.3 67.9,64.9 70.6,60.1 73.3,66.4 75.9,62.8 78.6,62.8 81.2,65.6 83.9,62.6 86.6,67.4 89.2,66.2 91.9,67.1 94.5,65.0 97.2,68.6 99.8,69.3 102.5,67.8 105.2,66.4 107.8,63.8 110.5,59.6 113.1,64.3 115.8,67.5 118.4,64.6 121.1,64.7 123.8,120.1 126.4,145.2 129.1,157.8 131.7,167.0 134.4,170.1 137.0,174.2 139.7,172.0 142.4,171.8 145.0,169.4 147.7,171.4 150.3,176.7 153.0,168.9 155.7,170.4 158.3,174.7 161.0,177.4 163.6,171.1 166.3,170.9 168.9,169.4 171.6,171.1 174.3,170.3 176.9,170.2 179.6,170.1 182.2,168.9 184.9,172.0 187.5,171.4 190.2,174.2 192.9,173.6 195.5,172.9 198.2,159.1 200.8,155.7 203.5,153.4 206.1,153.4 208.8,149.9 211.5,152.8 214.1,146.0 216.8,152.5 219.4,150.6 222.1,150.8 224.8,152.1 227.4,149.6 230.1,151.8 232.7,147.5 235.4,149.2 238.0,152.1 240.7,154.1 243.4,157.7 246.0,154.8 248.7,154.8 251.3,156.7 254.0,158.0 256.6,154.9 259.3,135.7 262.0,122.8 264.6,118.1 267.3,113.9 269.9,118.3 272.6,121.4 275.2,117.9 277.9,115.3 280.6,113.2 283.2,116.9 285.9,116.3 288.5,111.9 291.2,113.0 293.9,115.3 296.5,111.6 299.2,113.3 301.8,116.6 304.5,112.9 307.1,119.0 309.8,117.3 312.5,113.3 315.1,83.0 317.8,65.9 320.4,54.3 323.1,51.8 325.7,49.3 328.4,44.7 331.1,44.8 333.7,43.0 336.4,48.0 339.0,50.5 341.7,48.2 344.3,50.6 347.0,50.2 349.7,49.6 352.3,51.7 355.0,50.4 357.6,50.9 360.3,52.4 363.0,46.1 365.6,84.2 368.3,100.5 370.9,112.4 373.6,117.3 376.2,120.9 378.9,119.8 381.6,119.2 384.2,124.5 386.9,122.2 389.5,125.1 392.2,123.2 394.8,115.7 397.5,118.8 400.2,119.8 402.8,119.5 405.5,120.3 408.1,124.3 410.8,125.4 413.4,118.0 416.1,122.2 418.8,122.7 421.4,123.8 424.1,125.1 426.7,123.2 429.4,125.1 432.1,127.2 434.7,121.4 437.4,124.4 440.0,123.3 442.7,122.2 445.3,121.8 448.0,126.4" fill="none" stroke="#555555" stroke-width="1.2" stroke-dasharray="6,3"/><polyline points="52.0,69.3 54.7,67.1 57.3,65.6 60.0,62.3 62.6,62.7 65.3,60.2 67.9,62.2 70.6,60.0 73.3,62.8 75.9,62.4 78.6,62.4 81.2,64.0 83.9,63.4 86.6,66.2 89.2,65.9 91.9,66.5 94.5,65.8 97.2,67.7 99.8,68.4 102.5,67.9 105.2,67.5 107.8,66.1 110.5,62.0 113.1,63.6 115.8,64.8 118.4,64.5 121.1,64.5 123.8,151.9 126.4,165.7 129.1,168.9 131.7,174.2 134.4,173.4 137.0,176.7 139.7,172.4 142.4,172.0 145.0,169.5 147.7,171.4 150.3,177.2 153.0,172.2 155.7,172.2 158.3,174.6 161.0,176.8 163.6,175.2 166.3,174.3 168.9,172.3 171.6,172.4 174.3,171.6 176.9,171.1 179.6,170.8 182.2,169.8 184.9,170.7 187.5,170.8 190.2,172.0 192.9,172.2 195.5,172.3 198.2,159.1 200.8,155.7 203.5,153.3 206.1,153.4 208.8,150.0 211.5,152.2 214.1,145.8 216.8,149.4 219.4,149.2 222.1,149.6 224.8,150.0 227.4,149.6 230.1,150.3 232.7,148.7 235.4,149.1 238.0,150.3 240.7,152.0 243.4,155.9 246.0,154.7 248.7,154.7 251.3,156.0 254.0,157.2 256.6,156.0 259.3,133.4 262.0,118.0 264.6,115.2 267.3,111.8 269.9,117.4 272.6,120.1 275.2,117.7 277.9,115.4 280.6,113.5 283.2,115.7 285.9,115.7 288.5,112.5 291.2,113.0 293.9,114.0 296.5,112.1 299.2,112.8 301.8,114.0 304.5,113.2 307.1,116.9 309.8,116.6 312.5,115.6 315.1,71.9 317.8,55.4 320.4,46.4 323.1,48.5 325.7,47.5 328.4,42.8 331.1,44.0 333.7,42.4 336.4,47.0 339.0,48.8 341.7,47.8 344.3,48.8 347.0,48.9 349.7,48.9 352.3,49.9 355.0,49.8 357.6,50.1 360.3,51.1 363.0,48.4 365.6,100.7 368.3,111.9 370.9,120.6 373.6,121.5 376.2,123.5 378.9,120.6 381.6,119.5 384.2,125.3 386.9,122.7 389.5,125.3 392.2,123.7 394.8,121.4 397.5,121.4 400.2,121.4 402.8,121.0 405.5,121.0 408.1,122.6 410.8,123.7 413.4,120.4 416.1,121.1 418.8,121.5 421.4,122.3 424.1,123.5 426.7,123.0 429.4,124.2 432.1,126.0 434.7,124.8 437.4,125.2 440.0,124.8 442.7,124.0 445.3,123.3 448.0,124.6" fill="none" stroke="#1F5FBF" stroke-width="1.6" stroke-dasharray="none"/><line x1="52.0" y1="258" x2="74.0" y2="258" stroke="#C8C8C8" stroke-width="0.8" stroke-dasharray="none"/><text x="80.0" y="262">Raw observation</text><line x1="250.0" y1="258" x2="272.0" y2="258" stroke="#000000" stroke-width="1.0" stroke-dasharray="3,2"/><text x="278.0" y="262">Ground truth</text><line x1="52.0" y1="273" x2="74.0" y2="273" stroke="#999999" stroke-width="1.0" stroke-dasharray="2,2"/><text x="80.0" y="277">Fixed 0.55 Hz</text><line x1="250.0" y1="273" x2="272.0" y2="273" stroke="#555555" stroke-width="1.2" stroke-dasharray="6,3"/><text x="278.0" y="277">Fixed 5 Hz</text><line x1="52.0" y1="288" x2="74.0" y2="288" stroke="#1F5FBF" stroke-width="1.6" stroke-dasharray="none"/><text x="80.0" y="292">One Euro</text></svg><figcaption><b>Fig. 2.</b> First 5 s of the synthetic trace used in Table 3. The One Euro filter follows saccades almost immediately while suppressing fixation noise.</figcaption></figure>
+
+<p>A low fixed cut-off is stable but so slow that it has not settled 300 ms after a saccade; a high cut-off is fast but passes more noise. The One Euro filter halved the raw noise while reacting within one frame (latency resolution is limited to the 33 ms frame period).</p>
+<h3>5.5 Drift correction</h3>
+<p>A smooth, spatially varying drift field of magnitude 25–70 px was applied to predictions. Implicit calibration events were drawn at random screen positions with 12 px residual noise; in 15% of events the user was assumed to be looking elsewhere (offset 250–650 px per axis). Error was evaluated on a 9 × 6 grid and averaged over 200 repetitions.</p>
+<p class="tcap"><b>Table 4.</b> Mean error (px) after $n$ implicit calibration events.</p>
+
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>$n=0$</th>
+<th>1</th>
+<th>2</th>
+<th>4</th>
+<th>8</th>
+<th>16</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full method (Eqs. 5–6, 320 px gate)</td>
+<td>46.7</td>
+<td><strong>32.1</strong></td>
+<td><strong>27.1</strong></td>
+<td>23.1</td>
+<td>20.4</td>
+<td>18.7</td>
+</tr>
+<tr>
+<td>Without outlier gate</td>
+<td>46.7</td>
+<td>62.2</td>
+<td>64.2</td>
+<td>65.9</td>
+<td>55.9</td>
+<td>48.6</td>
+</tr>
+<tr>
+<td>Global mean (no spatial kernel)</td>
+<td>46.7</td>
+<td>31.2</td>
+<td>28.9</td>
+<td>26.7</td>
+<td>25.6</td>
+<td>24.8</td>
+</tr>
+<tr>
+<td>Without shrinkage ($k=1$)</td>
+<td>46.7</td>
+<td>34.0</td>
+<td>27.2</td>
+<td><strong>21.9</strong></td>
+<td><strong>19.6</strong></td>
+<td><strong>18.1</strong></td>
+</tr>
+</tbody>
+</table>
+<figure><svg viewBox="0 0 460 286" xmlns="http://www.w3.org/2000/svg" font-family="Times New Roman, serif" font-size="12"><rect x="52" y="12" width="396" height="198" fill="none" stroke="#000" stroke-width="0.8"/><line x1="48" y1="210.0" x2="52" y2="210.0" stroke="#000" stroke-width="0.8"/><text x="46" y="214.0" text-anchor="end">0</text><line x1="48" y1="170.4" x2="52" y2="170.4" stroke="#000" stroke-width="0.8"/><text x="46" y="174.4" text-anchor="end">16</text><line x1="48" y1="130.8" x2="52" y2="130.8" stroke="#000" stroke-width="0.8"/><text x="46" y="134.8" text-anchor="end">32</text><line x1="48" y1="91.2" x2="52" y2="91.2" stroke="#000" stroke-width="0.8"/><text x="46" y="95.2" text-anchor="end">48</text><line x1="48" y1="51.6" x2="52" y2="51.6" stroke="#000" stroke-width="0.8"/><text x="46" y="55.6" text-anchor="end">64</text><line x1="48" y1="12.0" x2="52" y2="12.0" stroke="#000" stroke-width="0.8"/><text x="46" y="16.0" text-anchor="end">80</text><line x1="52.0" y1="210" x2="52.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="52.0" y="226" text-anchor="middle">0</text><line x1="101.5" y1="210" x2="101.5" y2="214" stroke="#000" stroke-width="0.8"/><text x="101.5" y="226" text-anchor="middle">2</text><line x1="151.0" y1="210" x2="151.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="151.0" y="226" text-anchor="middle">4</text><line x1="250.0" y1="210" x2="250.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="250.0" y="226" text-anchor="middle">8</text><line x1="448.0" y1="210" x2="448.0" y2="214" stroke="#000" stroke-width="0.8"/><text x="448.0" y="226" text-anchor="middle">16</text><text x="250.0" y="246" text-anchor="middle">Number of implicit calibration events n</text><text transform="translate(12 111.0) rotate(-90)" text-anchor="middle">Mean error (px)</text><polyline points="52.0,94.4 76.8,130.6 101.5,142.8 151.0,152.8 250.0,159.6 448.0,163.8" fill="none" stroke="#1F5FBF" stroke-width="1.8" stroke-dasharray="none"/><circle cx="52.0" cy="94.4" r="2.6" fill="#1F5FBF"/><circle cx="76.8" cy="130.6" r="2.6" fill="#1F5FBF"/><circle cx="101.5" cy="142.8" r="2.6" fill="#1F5FBF"/><circle cx="151.0" cy="152.8" r="2.6" fill="#1F5FBF"/><circle cx="250.0" cy="159.6" r="2.6" fill="#1F5FBF"/><circle cx="448.0" cy="163.8" r="2.6" fill="#1F5FBF"/><polyline points="52.0,94.4 76.8,56.1 101.5,51.2 151.0,46.9 250.0,71.5 448.0,89.8" fill="none" stroke="#000000" stroke-width="1.2" stroke-dasharray="6,3"/><circle cx="52.0" cy="94.4" r="2.6" fill="#000000"/><circle cx="76.8" cy="56.1" r="2.6" fill="#000000"/><circle cx="101.5" cy="51.2" r="2.6" fill="#000000"/><circle cx="151.0" cy="46.9" r="2.6" fill="#000000"/><circle cx="250.0" cy="71.5" r="2.6" fill="#000000"/><circle cx="448.0" cy="89.8" r="2.6" fill="#000000"/><polyline points="52.0,94.4 76.8,132.7 101.5,138.4 151.0,143.9 250.0,146.8 448.0,148.6" fill="none" stroke="#777777" stroke-width="1.2" stroke-dasharray="2,2"/><circle cx="52.0" cy="94.4" r="2.6" fill="#777777"/><circle cx="76.8" cy="132.7" r="2.6" fill="#777777"/><circle cx="101.5" cy="138.4" r="2.6" fill="#777777"/><circle cx="151.0" cy="143.9" r="2.6" fill="#777777"/><circle cx="250.0" cy="146.8" r="2.6" fill="#777777"/><circle cx="448.0" cy="148.6" r="2.6" fill="#777777"/><polyline points="52.0,94.4 76.8,125.9 101.5,142.6 151.0,155.7 250.0,161.5 448.0,165.3" fill="none" stroke="#1F5FBF" stroke-width="1.0" stroke-dasharray="4,2"/><circle cx="52.0" cy="94.4" r="2.6" fill="#1F5FBF"/><circle cx="76.8" cy="125.9" r="2.6" fill="#1F5FBF"/><circle cx="101.5" cy="142.6" r="2.6" fill="#1F5FBF"/><circle cx="151.0" cy="155.7" r="2.6" fill="#1F5FBF"/><circle cx="250.0" cy="161.5" r="2.6" fill="#1F5FBF"/><circle cx="448.0" cy="165.3" r="2.6" fill="#1F5FBF"/><line x1="52.0" y1="258" x2="74.0" y2="258" stroke="#1F5FBF" stroke-width="1.8" stroke-dasharray="none"/><text x="80.0" y="262">Full method</text><line x1="250.0" y1="258" x2="272.0" y2="258" stroke="#000000" stroke-width="1.2" stroke-dasharray="6,3"/><text x="278.0" y="262">No 320 px gate</text><line x1="52.0" y1="273" x2="74.0" y2="273" stroke="#777777" stroke-width="1.2" stroke-dasharray="2,2"/><text x="80.0" y="277">Global mean (no spatial kernel)</text><line x1="250.0" y1="273" x2="272.0" y2="273" stroke="#1F5FBF" stroke-width="1.0" stroke-dasharray="4,2"/><text x="278.0" y="277">No shrinkage</text></svg><figcaption><b>Fig. 3.</b> Drift-correction error versus the number of implicit calibration events (Table 4), averaged over 200 repetitions.</figcaption></figure>
+
+<p>The full method reduced the error by 60% after 16 events. The outlier gate is essential: without it, look-away presses made the correction worse than no correction at all. The spatial kernel mattered once enough samples accumulated (18.7 vs 24.8 px at $n=16$), because a single global offset cannot represent a position-dependent drift. Shrinkage helped with a single sample (32.1 vs 34.0 px) at a small cost when many samples were available (18.7 vs 18.1 px), a deliberate trade-off in favour of robustness early in a session.</p>
+<h2>6. Discussion and Limitations</h2>
+<p>The design principle of LookAsk is to accept the accuracy ceiling of webcam gaze and to allocate precision to the component that can provide it most cheaply: statistics for calibration, user behaviour for drift, filtering for noise, language cues for the last few tens of pixels, and the hand for word-level selection.</p>
+<p>Several limitations remain. (i) All quantitative results are synthetic; a user study measuring calibration error, drift over time and selection time is needed. (ii) The gaze mapping is linear in the features; large head movements may call for a non-linear (e.g. RBF) kernel or explicit head-pose compensation. (iii) Implicit calibration assumes the user looks at the focus when pressing a button; the fixed 320 px gate could be replaced by an adaptive robust criterion such as a median-absolute-deviation threshold. (iv) The keyword score is hand-crafted and could be learned or replaced by term-frequency statistics. (v) Camera “centre stage” features on some laptops crop the image and invalidate calibration. (vi) The feature extractor is AGPL-licensed, which constrains redistribution.</p>
+<h2>7. Conclusion</h2>
+<p>We described the algorithmic chain of LookAsk, which turns paragraph-level webcam gaze into a word-level pointer for LLM-assisted reading. Dual ridge regression with grouped cross-validation provides fast and honestly evaluated per-user calibration; kernel-based implicit recalibration counteracts drift; One Euro filtering and I-DT detection produce stable fixations; and two-level focus with keyword attraction bridges the remaining gap to individual words. Synthetic experiments with the production code support each design decision.</p>
+<h2>Code Availability</h2>
+<p>All algorithms are implemented in the LookAsk repository: <code>gaze/ridge.ts</code> (Eqs. 1–4), <code>gaze/engine.ts</code> (Eqs. 5–6), <code>gaze/filters.ts</code> (Eqs. 7–8 and I-DT), <code>focus/focus.ts</code>, <code>focus/magnet.ts</code> and <code>focus/snap.ts</code> (Section 4.6), and <code>jev/jevBrain.ts</code> (Section 4.7). The experiments are in <code>docs/算法论文/experiments</code>.</p>
+<h2>Declaration of Generative AI Use</h2>
+<p>The LookAsk software was developed with substantial assistance from AI coding tools, and this report, including the experiment scripts, was drafted with the assistance of an AI model and then checked against the source code by the author. All numerical results were produced by executing the scripts in the repository.</p>
+<h2>References</h2>
+<ol class="refs">
+<li>Papoutsaki A, Sangkloy P, Laskey J, Daskalova N, Huang J, Hays J. WebGazer: Scalable webcam eye tracking using user interactions. In: <i>Proc. IJCAI</i>; 2016. p. 3839–3845.</li>
+<li>Krafka K, Khosla A, Kellnhofer P, Kannan H, Bhandarkar S, Matusik W, Torralba A. Eye tracking for everyone. In: <i>Proc. IEEE CVPR</i>; 2016. p. 2176–2184.</li>
+<li>Zhang X, Sugano Y, Fritz M, Bulling A. Appearance-based gaze estimation in the wild. In: <i>Proc. IEEE CVPR</i>; 2015. p. 4511–4520.</li>
+<li>Casiez G, Roussel N, Vogel D. 1€ filter: A simple speed-based low-pass filter for noisy input in interactive systems. In: <i>Proc. ACM CHI</i>; 2012. p. 2527–2530.</li>
+<li>Salvucci DD, Goldberg JH. Identifying fixations and saccades in eye-tracking protocols. In: <i>Proc. ACM ETRA</i>; 2000. p. 71–78.</li>
+<li>Zhai S, Morimoto C, Ihde S. Manual and gaze input cascaded (MAGIC) pointing. In: <i>Proc. ACM CHI</i>; 1999. p. 246–253.</li>
+<li>Hoerl AE, Kennard RW. Ridge regression: Biased estimation for nonorthogonal problems. <i>Technometrics</i>. 1970;12(1):55–67.</li>
+<li>Saunders C, Gammerman A, Vovk V. Ridge regression learning algorithm in dual variables. In: <i>Proc. ICML</i>; 1998. p. 515–521.</li>
+<li>Nadaraya EA. On estimating regression. <i>Theory of Probability and Its Applications</i>. 1964;9(1):141–142.</li>
+<li>Watson GS. Smooth regression analysis. <i>Sankhyā: The Indian Journal of Statistics, Series A</i>. 1964;26(4):359–372.</li>
+<li>Kartynnik Y, Ablavatski A, Grishchenko I, Grundmann M. Real-time facial surface geometry from monocular video on mobile GPUs. In: <i>CVPR Workshop on Computer Vision for Augmented and Virtual Reality</i>; 2019. arXiv:1907.06724.</li>
+<li>Hastie T, Tibshirani R, Friedman J. <i>The Elements of Statistical Learning</i>. 2nd ed. New York: Springer; 2009.</li>
+<li>Sugano Y, Matsushita Y, Sato Y. Appearance-based gaze estimation using visual saliency. <i>IEEE Transactions on Pattern Analysis and Machine Intelligence</i>. 2013;35(2):329–341.</li>
+<li>Jacob RJK. What you look at is what you get: Eye movement-based interaction techniques. In: <i>Proc. ACM CHI</i>; 1990. p. 11–18.</li>
+<li>Roberts DR, Bahn V, Ciuti S, et al. Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. <i>Ecography</i>. 2017;40(8):913–929.</li>
+<li>Golub GH, Van Loan CF. <i>Matrix Computations</i>. 4th ed. Baltimore: Johns Hopkins University Press; 2013.</li>
+</ol></main>
+<script>renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],trust:true,strict:false});</script>
+</body></html>
