@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { gaze } from './engine'
+import { gaze, meanPose, type HeadPos } from './engine'
 import { useStore } from '../store'
 import { uiStore, setUiMode, settingsStore, clientToScreen, screenToClient, toast, rumble, boundsStore, la } from '../appState'
 import { input } from '../input/joycon'
 import type { FitInput } from './ridge'
+import { avatarStore } from '../avatar/avatar'
 
 // 全屏校准：盯着点看，点缩小时采集眼睛特征；结束后在 Worker 里拟合并给出交叉验证误差
 // 另有两个轻量流程：精度测试（5 个随机点量真实误差）、漂移校正（盯中心点 1.5 秒）
@@ -52,6 +53,7 @@ export function Calibration(): React.JSX.Element | null {
 function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): React.JSX.Element {
   const settings = useStore(settingsStore).s
   const status = useStore(gaze.status)
+  const avatar = useStore(avatarStore)
   const [phase, setPhase] = useState<Phase>(kind === 'full' ? 'intro' : kind)
   const [dot, setDot] = useState<{ x: number; y: number; shrink: boolean } | null>(null)
   const [idx, setIdx] = useState(0)
@@ -134,6 +136,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     const ty: number[] = []
     const groups: number[] = []
     const zs: number[] = []
+    const poses: HeadPos[] = []
     for (let i = 0; i < pts.length; i++) {
       if (abortRef.current) return
       const [nx, ny] = pts[i]
@@ -161,6 +164,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
         groups.push(i)
       }
       if (got.faceScale) zs.push(got.faceScale)
+      poses.push(...got.poses)
       rumble('soft', 'R')
     }
     setDot(null)
@@ -174,7 +178,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     try {
       const { model, ms } = await gaze.fit(input)
       scaleRef.current = zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null
-      gaze.setModel(model, scaleRef.current)
+      gaze.setModel(model, scaleRef.current, meanPose(poses))
       setResult({ cv: model.cvErrorPx, ms, samples: rows.length })
       setPhase('result')
       rumble('done', 'R')
@@ -283,6 +287,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
               {scale && scale > 0.42 ? '（太近了，往后坐一点）' : scale && scale < 0.13 ? '（太远了，往前坐一点）' : ''}
             </span>
           </div>
+          <PoseHint />
           <ul className="calib-tips">
             <li>坐正，眼睛离屏幕 45～65 厘米；接下来 25 秒尽量别动头，只动眼睛</li>
             <li>每个点出现后盯住它的圆心，直到它缩小消失</li>
@@ -341,6 +346,17 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
             <button className="btn" onClick={() => runValidate().then(() => undefined)}>
               精度测试
             </button>
+            {!avatar.img && !avatar.busy && (
+              <button
+                className="btn"
+                onClick={() => {
+                  close()
+                  uiStore.patch({ showBooth: true })
+                }}
+              >
+                顺手拍张大头照，生成小人
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -372,4 +388,28 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
       )}
     </div>
   )
+}
+
+/** 校准前的摆位提示：脸居中、远近合适。校准时的位置会被记住，之后偏了就按它提醒 */
+function PoseHint(): React.JSX.Element {
+  const cur = useStore(gaze.pose).cur
+  let tip = '坐到你平时最舒服的位置再开始：之后头挪开了，LookAsk 会按这个位置提醒你挪回来'
+  let bad = false
+  if (!cur) {
+    tip = '先让脸完整出现在画面里'
+    bad = true
+  } else if (cur.w > 0.42) {
+    tip = '离得太近了，往后靠一点'
+    bad = true
+  } else if (cur.w < 0.13) {
+    tip = '离得太远了，往前凑一点'
+    bad = true
+  } else if (Math.abs(cur.cx - 0.5) > 0.18) {
+    tip = cur.cx > 0.5 ? '脸偏右了，往左挪一点到画面中间' : '脸偏左了，往右挪一点到画面中间'
+    bad = true
+  } else if (Math.abs(cur.cy - 0.45) > 0.2) {
+    tip = cur.cy > 0.45 ? '脸在画面偏下，坐高一点或把屏幕往下压一点' : '脸在画面偏上，往下坐一点'
+    bad = true
+  }
+  return <div className={`calib-pose ${bad ? 'bad' : 'ok'}`}>{tip}</div>
 }

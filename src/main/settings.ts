@@ -90,9 +90,10 @@ export function defaultSettings(): Settings {
     chatModel: { providerId: 'qwen', model: 'qwen3.8-max' },
     fastModel: { providerId: 'qwen', model: 'qwen3.8-flash' },
     visionModel: { providerId: 'qwen', model: 'qwen3.8-max' },
+    avatar: { providerId: 'openlux', model: 'gpt-image-2', quality: 'medium', show: true },
     jev: { baseUrl: 'https://api.typesafe.ai', apiKey: '', model: 'jev-latest', dailyTokenCap: 60000 },
     jevMode: false,
-    gaze: { cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5 },
+    gaze: { cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7 },
     terminal: { cwd: homedir(), shell: process.env.SHELL || '/bin/zsh' },
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     leftRatio: 0.62
@@ -124,6 +125,7 @@ export function loadSettings(): Settings {
         ...def,
         ...raw,
         jev: { ...def.jev, ...(raw.jev || {}) },
+        avatar: { ...def.avatar, ...(raw.avatar || {}) },
         gaze: { ...def.gaze, ...(raw.gaze || {}) },
         terminal: { ...def.terminal, ...(raw.terminal || {}) },
         providers: raw.providers?.length ? raw.providers : def.providers

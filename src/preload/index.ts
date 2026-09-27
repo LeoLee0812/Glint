@@ -71,6 +71,12 @@ const api = {
   screen: {
     capture: (rect: Rect): Promise<{ dataUrl: string; path: string } | { error: string }> => ipcRenderer.invoke('screen:capture', rect)
   },
+  avatar: {
+    get: (): Promise<string | null> => ipcRenderer.invoke('avatar:get'),
+    /** 大头照 → 卡通小人，约 40～60 秒 */
+    generate: (photo: string): Promise<{ dataUrl: string; ms: number } | { error: string }> => ipcRenderer.invoke('avatar:generate', photo),
+    clear: (): Promise<void> => ipcRenderer.invoke('avatar:clear')
+  },
   perm: {
     status: (): Promise<{ camera: string; microphone: string; screen: string }> => ipcRenderer.invoke('perm:status'),
     openSettings: (pane: 'screen' | 'accessibility' | 'camera' | 'microphone' | 'speech') => ipcRenderer.invoke('perm:openSettings', pane)

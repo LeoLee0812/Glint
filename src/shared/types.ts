@@ -35,6 +35,17 @@ export interface GazeConfig {
   autoScroll: boolean
   /** 平滑强度 0~1，越大越稳越慢 */
   smoothing: number
+  /** 吸附强度 0~1：视线光环吸词有多积极、软焦点多不容易跳段（0.4 约等于最早的手感） */
+  magnet: number
+}
+
+/** 实时小人：拍的大头照交给哪个图生图服务变成卡通形象（OpenAI 兼容的 images/edits 接口） */
+export interface AvatarConfig {
+  providerId: string
+  model: string
+  quality: 'low' | 'medium' | 'high'
+  /** 显示屏幕角落里的实时小人 */
+  show: boolean
 }
 
 export interface Settings {
@@ -42,6 +53,7 @@ export interface Settings {
   chatModel: ModelRef
   fastModel: ModelRef
   visionModel: ModelRef
+  avatar: AvatarConfig
   jev: JevConfig
   jevMode: boolean
   gaze: GazeConfig
@@ -149,6 +161,8 @@ export interface Rect {
 /** 全局模式浮层要画的东西（屏幕坐标） */
 export interface OverlayState {
   gaze: { x: number; y: number } | null
+  /** 眼睛去了视线不跟的那一侧：光环朝这个点滑走、边走边淡 */
+  exit?: { x: number; y: number } | null
   focus: Rect | null
   label?: string
   mode: 'soft' | 'hard'

@@ -22,8 +22,11 @@ import { startStream, abortStream, listModels, testProvider } from './llm'
 import { judge, jevUsage, flushJev } from './jev'
 import { startBridge, stopBridge, onBridge, sendBridge, requestBridge } from './bridge'
 import { createPty, writePty, resizePty, killPty, killAllPty } from './pty'
+import { generateAvatar, loadAvatar, clearAvatar } from './avatar'
 
 app.setName('LookAsk')
+// 测试用：LOOKASK_USER_DATA=<目录> 换一套用户数据（设置、校准、小人都分开存），能和已装好的 LookAsk 同时开
+if (process.env.LOOKASK_USER_DATA) app.setPath('userData', process.env.LOOKASK_USER_DATA)
 
 // 打包后渲染进程走自定义协议 lookask://app/，不能用 file://：
 // MediaPipe 要用 fetch 拉 wasm 和模型，Chromium 的 fetch 不支持 file 协议
@@ -102,7 +105,7 @@ function createMainWindow(): void {
     title: 'LookAsk',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 13 },
-    backgroundColor: '#0e1014',
+    backgroundColor: '#ffffff',
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -321,6 +324,10 @@ function registerIpc(): void {
     if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:state', s)
   })
 
+  ipcMain.handle('avatar:get', () => loadAvatar())
+  ipcMain.handle('avatar:generate', (_e, photo: string) => generateAvatar(photo))
+  ipcMain.handle('avatar:clear', () => clearAvatar())
+
   ipcMain.handle('screen:capture', (_e, rect: Rect) => captureScreenRect(rect))
   // 截主窗口里的一块（窗口坐标），给 Markdown / 终端 / 对话区的「截图问」用
   ipcMain.handle('win:capture', async (_e, rect: Rect) => {
@@ -339,7 +346,12 @@ function registerIpc(): void {
     microphone: systemPreferences.getMediaAccessStatus('microphone'),
     screen: systemPreferences.getMediaAccessStatus('screen')
   }))
-  ipcMain.handle('perm:openSettings', (_e, pane: 'screen' | 'accessibility' | 'camera' | 'microphone' | 'speech') => {
+  ipcMain.handle('perm:openSettings', async (_e, pane: 'screen' | 'accessibility' | 'camera' | 'microphone' | 'speech') => {
+    // 从没申请过的权限，系统设置列表里根本没有 LookAsk，得先弹系统授权框
+    if ((pane === 'microphone' || pane === 'camera') && systemPreferences.getMediaAccessStatus(pane) === 'not-determined') {
+      await systemPreferences.askForMediaAccess(pane).catch(() => false)
+      return
+    }
     const map: Record<string, string> = {
       screen: 'Privacy_ScreenCapture',
       accessibility: 'Privacy_Accessibility',
@@ -396,10 +408,12 @@ if (!app.requestSingleInstanceLock()) {
     )
     registerIpc()
     onBridge((e) => send('bridge:event', e))
-    startBridge()
+    // 测试用：LOOKASK_NO_BRIDGE=1 不拉原生助手，免得和正在用的 LookAsk 抢手柄
+    if (!process.env.LOOKASK_NO_BRIDGE) startBridge()
     createMainWindow()
-    // 先把系统摄像头授权弹出来，渲染进程再开摄像头就不会卡住
-    if (systemPreferences.getMediaAccessStatus('camera') !== 'granted') {
+    // 先把系统摄像头授权弹出来，渲染进程再开摄像头就不会卡住（假摄像头用不到真摄像头，不弹）
+    const fakeCam = !!(process.env.LOOKASK_FAKE_CAM || process.env.LOOKASK_FAKE_CAM_FILE)
+    if (!fakeCam && systemPreferences.getMediaAccessStatus('camera') !== 'granted') {
       systemPreferences.askForMediaAccess('camera').catch(() => undefined)
     }
   })

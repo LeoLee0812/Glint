@@ -12,6 +12,9 @@ import { Calibration } from './gaze/Calibration'
 import { SettingsDialog } from './settings/SettingsDialog'
 import { JoyHelp } from './ui/JoyHelp'
 import { Toasts } from './ui/Toasts'
+import { HeadGuide } from './ui/HeadGuide'
+import { PhotoBooth } from './ui/PhotoBooth'
+import { loadAvatar } from './avatar/avatar'
 
 export default function App(): React.JSX.Element {
   const ui = useStore(uiStore)
@@ -21,6 +24,7 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     const off = panes.register(createScreenAdapter())
+    loadAvatar().catch(() => undefined)
     loadSettingsIntoStore().then((st) => {
       setRatio(st.leftRatio || 0.62)
       gaze.setSmoothing(st.gaze.smoothing)
@@ -63,7 +67,7 @@ export default function App(): React.JSX.Element {
   const global = ui.mode === 'global'
 
   return (
-    <div className={`app mode-${ui.mode}`}>
+    <div className={`app mode-${ui.mode} side-${ui.side} ${ui.capturing ? 'capturing' : ''}`}>
       <TopBar />
       <main className="split" style={{ gridTemplateColumns: global ? '1fr' : `${ratio}fr 6px ${1 - ratio}fr` }}>
         {/* 全局模式只是藏起来不卸载，终端里的会话不能断 */}
@@ -84,6 +88,8 @@ export default function App(): React.JSX.Element {
       <Calibration />
       <SettingsDialog />
       <JoyHelp />
+      <HeadGuide />
+      <PhotoBooth />
       <Toasts />
       {!s && <div className="boot">启动中…</div>}
     </div>

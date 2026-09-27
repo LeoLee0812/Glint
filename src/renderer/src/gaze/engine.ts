@@ -19,6 +19,8 @@ export interface GazeFrame {
   blink: number
   headZ: number | null
   faceBox: { x: number; y: number; w: number; h: number } | null
+  /** 这一帧的头位置和转角（未平滑） */
+  pose: HeadPos | null
 }
 
 export interface GazeSample {
@@ -46,7 +48,78 @@ export interface GazeStatus {
   dark: boolean
 }
 
+/** 头在摄像头画面里的位置（已镜像成「照镜子」的方向，0~1）；w = 脸宽占画面宽度，越大越近 */
+export interface HeadPos {
+  cx: number
+  cy: number
+  w: number
+  /** 歪头（弧度，镜子里顺时针为正） */
+  roll?: number
+  /** 左右转头（≈ 1.4 × tan(转角)，转向镜子里的右边为正） */
+  yaw?: number
+  /** 抬头低头：鼻尖在「两眼连线 → 下巴」之间的位置，越大越低头 */
+  pitch?: number
+}
+
+/** 脸上的小动作（给实时小人用）：眨眼、张嘴、眼珠往哪看（-1~1，镜子方向） */
+export interface FaceExpr {
+  blink: number
+  mouth: number
+  lookX: number
+  lookY: number
+}
+
 type Residual = { px: number; py: number; rx: number; ry: number; t: number; w: number }
+
+/** 人脸框 → 镜像后的头位置（和校准预览、照镜子的方向一致） */
+export function poseOf(b: { x: number; y: number; w: number; h: number }): HeadPos {
+  return { cx: 1 - (b.x + b.w / 2), cy: b.y + b.h / 2, w: b.w }
+}
+
+/**
+ * 从 478 个关键点估头的转角，已镜像成照镜子的方向
+ * 33 / 263 = 右眼 / 左眼外眼角，1 = 鼻尖，234 / 454 = 右 / 左脸颊边缘，152 = 下巴
+ */
+export function rotationOf(lm: Array<{ x: number; y: number }>, vw: number, vh: number): Pick<HeadPos, 'roll' | 'yaw' | 'pitch'> | null {
+  const rEye = lm[33]
+  const lEye = lm[263]
+  const nose = lm[1]
+  const rEdge = lm[234]
+  const lEdge = lm[454]
+  const chin = lm[152]
+  if (!rEye || !lEye || !nose || !rEdge || !lEdge || !chin) return null
+  // 画面里从人的右眼（在画面左边）指向左眼；镜像后左右翻过来，角度取反
+  const roll = -Math.atan2((lEye.y - rEye.y) * vh, (lEye.x - rEye.x) * vw)
+  // 鼻尖在两颊之间的位置：正对时约 0.5；人往自己左边转，鼻尖在画面里往右，镜子里是往左转
+  const span = lEdge.x - rEdge.x
+  const yaw = Math.abs(span) > 1e-4 ? (0.5 - (nose.x - rEdge.x) / span) * 2 : 0
+  const eyeY = (rEye.y + lEye.y) / 2
+  const down = chin.y - eyeY
+  const pitch = Math.abs(down) > 1e-4 ? (nose.y - eyeY) / down : 0.5
+  return { roll, yaw, pitch }
+}
+
+export function meanPose(list: HeadPos[]): HeadPos | null {
+  if (!list.length) return null
+  const n = list.length
+  const avg = (f: (p: HeadPos) => number) => list.reduce((a, p) => a + f(p), 0) / n
+  const out: HeadPos = { cx: avg((p) => p.cx), cy: avg((p) => p.cy), w: avg((p) => p.w) }
+  // 转角只在每一帧都有时才平均（老数据没有）
+  if (list.every((p) => p.roll != null && p.yaw != null && p.pitch != null)) {
+    out.roll = avg((p) => p.roll!)
+    out.yaw = avg((p) => p.yaw!)
+    out.pitch = avg((p) => p.pitch!)
+  }
+  return out
+}
+
+function lerpPose(e: HeadPos, p: HeadPos, k: number): HeadPos {
+  const out: HeadPos = { cx: e.cx + (p.cx - e.cx) * k, cy: e.cy + (p.cy - e.cy) * k, w: e.w + (p.w - e.w) * k }
+  if (p.roll != null) out.roll = e.roll != null ? e.roll + (p.roll - e.roll) * k : p.roll
+  if (p.yaw != null) out.yaw = e.yaw != null ? e.yaw + (p.yaw - e.yaw) * k : p.yaw
+  if (p.pitch != null) out.pitch = e.pitch != null ? e.pitch + (p.pitch - e.pitch) * k : p.pitch
+  return out
+}
 
 class GazeEngine {
   status = createStore<GazeStatus>({
@@ -62,6 +135,11 @@ class GazeEngine {
     driftPx: 0,
     dark: false
   })
+  /** 当前头位置和校准时的头位置，给「往前 / 往后 / 往左…」的提醒和实时小人用；expr = 眨眼、张嘴、眼珠方向 */
+  pose = createStore<{ cur: HeadPos | null; ref: HeadPos | null; expr: FaceExpr | null }>({ cur: null, ref: null, expr: null })
+  /** 最近一次看到脸时的人脸框（0~1，未镜像）和时间（performance.now），拍大头照时按它裁 */
+  lastFaceBox: { x: number; y: number; w: number; h: number } | null = null
+  lastFaceBoxAt = 0
   events = new Emitter<{
     frame: GazeFrame
     sample: GazeSample
@@ -85,6 +163,8 @@ class GazeEngine {
   private fpsT0 = performance.now()
   private lastFaceAt = 0
   private scales: number[] = []
+  private poseEma: HeadPos | null = null
+  private exprEma: FaceExpr | null = null
   private tiny = document.createElement('canvas')
   private tinyCtx = this.tiny.getContext('2d', { willReadFrequently: true })!
   lastSample: GazeSample | null = null
@@ -244,6 +324,7 @@ class GazeEngine {
     let blink = 0
     let headZ: number | null = null
     let faceBox: GazeFrame['faceBox'] = null
+    let pose: HeadPos | null = null
     if (det && det.allLandmarks?.length >= 478) {
       const img = this.ctx.getImageData(0, 0, vw, vh)
       const f = extractCombinedFeatures(
@@ -264,8 +345,23 @@ class GazeEngine {
       headZ = det.headPose ? Math.abs(det.headPose.translationZ) : null
       faceBox = { x: det.boundingBox.x / vw, y: det.boundingBox.y / vh, w: det.boundingBox.width / vw, h: det.boundingBox.height / vh }
       this.lastFaceAt = t
+      this.lastFaceBox = faceBox
+      this.lastFaceBoxAt = t
       this.scales.push(faceBox.w)
       if (this.scales.length > 30) this.scales.shift()
+      pose = { ...poseOf(faceBox), ...(rotationOf(det.allLandmarks, vw, vh) || {}) }
+      this.poseEma = this.poseEma ? lerpPose(this.poseEma, pose, 0.15) : pose
+      const ex = this.exprOf(det)
+      const ee = this.exprEma
+      // 眨眼要跟得快，别的稍微平滑一点
+      this.exprEma = ee
+        ? { blink: ee.blink + (ex.blink - ee.blink) * 0.6, mouth: ee.mouth + (ex.mouth - ee.mouth) * 0.4, lookX: ee.lookX + (ex.lookX - ee.lookX) * 0.3, lookY: ee.lookY + (ex.lookY - ee.lookY) * 0.3 }
+        : ex
+      if (this.frameCount % 3 === 0) this.pose.patch({ cur: { ...this.poseEma }, expr: { ...this.exprEma } })
+    } else if (this.poseEma && t - this.lastFaceAt > 600) {
+      this.poseEma = null
+      this.exprEma = null
+      this.pose.patch({ cur: null, expr: null })
     }
     const face = !!features
     const st = this.status.get()
@@ -275,7 +371,7 @@ class GazeEngine {
       this.status.patch({ faceScale: Math.round(avg * 1000) / 1000 })
     }
 
-    this.events.emit('frame', { t, features, face, blink, headZ, faceBox })
+    this.events.emit('frame', { t, features, face, blink, headZ, faceBox, pose })
 
     // 闭眼那几帧眼部图像是废的，直接跳过，保持上一次的视线
     const blinking = blink > 0.45
@@ -301,6 +397,39 @@ class GazeEngine {
     if (ev?.kind === 'start') this.events.emit('fixStart', ev.fix)
     else if (ev?.kind === 'update') this.events.emit('fixUpdate', ev.fix)
     else if (ev?.kind === 'end') this.events.emit('fixEnd', ev.fix)
+  }
+
+  /**
+   * 眨眼（表情系数）、张嘴（上下唇内缘距离 / 脸高）、眼珠方向（虹膜在眼眶里的位置，换成镜子方向）
+   * 眼珠用几何算不用表情系数：表情系数的左右在不同版本里对不上，几何不会错
+   */
+  private exprOf(det: FaceLandmarkerResult): FaceExpr {
+    const b = det.blendshapes
+    const lm = det.allLandmarks
+    const faceH = Math.abs((lm[152]?.y ?? 1) - (lm[10]?.y ?? 0)) || 1
+    const gap = Math.max(0, (lm[14]?.y ?? 0) - (lm[13]?.y ?? 0))
+    // 虹膜中心在两个眼角之间的位置（画面坐标，0.5 = 正中）；468 配右眼 33/133，473 配左眼 263/362
+    const across = (a?: { x: number }, c?: { x: number }, iris?: { x: number }) => {
+      if (!a || !c || !iris) return 0.5
+      const x0 = Math.min(a.x, c.x)
+      const x1 = Math.max(a.x, c.x)
+      return x1 - x0 > 1e-4 ? (iris.x - x0) / (x1 - x0) : 0.5
+    }
+    const updown = (top?: { y: number }, bot?: { y: number }, iris?: { y: number }) => {
+      if (!top || !bot || !iris) return 0.5
+      const h = bot.y - top.y
+      return Math.abs(h) > 1e-4 ? (iris.y - top.y) / h : 0.5
+    }
+    const u = (across(lm[33], lm[133], lm[468]) + across(lm[263], lm[362], lm[473])) / 2
+    const v = (updown(lm[159], lm[145], lm[468]) + updown(lm[386], lm[374], lm[473])) / 2
+    const clamp1 = (x: number) => Math.max(-1, Math.min(1, x))
+    return {
+      blink: b ? Math.max(b.eyeBlinkLeft, b.eyeBlinkRight) : 0,
+      mouth: Math.min(1, gap / faceH / 0.18),
+      // 虹膜在画面里偏右 = 人往自己左边看 = 镜子里往左
+      lookX: clamp1((0.5 - u) * 5),
+      lookY: clamp1((v - 0.5) * 4)
+    }
   }
 
   /** 最近一段时间（毫秒）原始预测的平均值，未加漂移校正 */
@@ -336,13 +465,16 @@ class GazeEngine {
         this.model = m
         const sc = Number(localStorage.getItem(MODEL_KEY + '.scale'))
         this.status.patch({ calibrated: true, cvErrorPx: m.cvErrorPx, calibFaceScale: sc > 0 ? sc : null })
+        const ref = JSON.parse(localStorage.getItem(MODEL_KEY + '.pose') || 'null') as HeadPos | null
+        // 老版本只存了脸宽，那就只能提醒前后
+        this.pose.patch({ ref: ref ?? (sc > 0 ? { cx: NaN, cy: NaN, w: sc } : null) })
       }
     } catch {
       /* 旧模型坏了就当没校准 */
     }
   }
 
-  setModel(m: RidgeModel, faceScale: number | null): void {
+  setModel(m: RidgeModel, faceScale: number | null, pose: HeadPos | null = null): void {
     this.model = m
     this.residuals = []
     this.filter.reset()
@@ -353,8 +485,10 @@ class GazeEngine {
       /* 存不下就只在本次会话有效 */
     }
     this.status.patch({ calibrated: true, cvErrorPx: m.cvErrorPx, calibFaceScale: faceScale, driftPx: 0 })
+    this.pose.patch({ ref: pose })
     try {
       localStorage.setItem(MODEL_KEY + '.scale', String(faceScale ?? ''))
+      localStorage.setItem(MODEL_KEY + '.pose', JSON.stringify(pose))
     } catch {
       /* 忽略 */
     }
@@ -364,6 +498,7 @@ class GazeEngine {
     this.model = null
     localStorage.removeItem(MODEL_KEY)
     this.status.patch({ calibrated: false, cvErrorPx: null })
+    this.pose.patch({ ref: null })
   }
 
   /** 在 Worker 里拟合 */
@@ -384,22 +519,24 @@ class GazeEngine {
   }
 
   /** 收集 ms 毫秒内的有效特征帧（有脸、没眨眼） */
-  collect(ms: number, onProgress?: (n: number) => void): Promise<{ rows: Float64Array[]; faceScale: number | null }> {
+  collect(ms: number, onProgress?: (n: number) => void): Promise<{ rows: Float64Array[]; faceScale: number | null; poses: HeadPos[] }> {
     return new Promise((resolve) => {
       const rows: Float64Array[] = []
       const sc: number[] = []
+      const poses: HeadPos[] = []
       const t0 = performance.now()
       let done = false
       const finish = () => {
         if (done) return
         done = true
         off()
-        resolve({ rows, faceScale: sc.length ? sc.reduce((a, b) => a + b, 0) / sc.length : null })
+        resolve({ rows, faceScale: sc.length ? sc.reduce((a, b) => a + b, 0) / sc.length : null, poses })
       }
       const off = this.events.on('frame', (f) => {
         if (f.features && f.blink < 0.4) {
           rows.push(f.features)
           if (f.faceBox) sc.push(f.faceBox.w)
+          if (f.pose) poses.push(f.pose)
           onProgress?.(rows.length)
         }
         if (performance.now() - t0 >= ms) finish()
