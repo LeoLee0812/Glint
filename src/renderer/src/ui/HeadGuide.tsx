@@ -184,7 +184,7 @@ export function HeadGuide(): React.JSX.Element | null {
 
   const text: Record<Phase, [string, string]> = td
     ? {
-        nocam: ['iPhone 没连上', st.link?.state === 'unpaired' ? '到设置 → 眼动 输入配对码' : '打开手机上的 LookAskEye'],
+        nocam: ['iPhone 没连上', st.link?.state === 'unpaired' ? '到设置 → 眼动 输入配对码' : '打开手机上的 Glint Eye'],
         nocal: ['还没校准', '原深感校准一次就行，头动会自动补偿'],
         lost: ['手机看不到你的脸', '前置镜头对着脸，别挡住'],
         off: [advice?.main || '偏得有点多', advice?.sub || '回到手机镜头前面'],

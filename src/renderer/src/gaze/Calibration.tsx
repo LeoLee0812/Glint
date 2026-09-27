@@ -133,7 +133,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
 
   async function run(): Promise<void> {
     if (status.state !== 'running') {
-      toast(td ? 'iPhone 还没连上：打开手机上的 LookAskEye，并在设置里配好对' : '摄像头还没准备好', 'warn')
+      toast(td ? 'iPhone 还没连上：打开手机上的 Glint Eye，并在设置里配好对' : '摄像头还没准备好', 'warn')
       return
     }
     await waitFullscreen()
@@ -284,7 +284,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
               <TdPoseHint />
               <ul className="calib-tips">
                 <li>手机竖放：测试时立在屏幕和键盘之间的缝里，以后可以用背板挂在屏幕后面、镜头露出屏幕上沿；放好后别再碰它，碰了要重新校准</li>
-                <li>前置镜头对着脸，离脸 40～70 厘米；手机上的 LookAskEye 要一直开在前台（屏幕会常亮）</li>
+                <li>前置镜头对着脸，离脸 40～70 厘米；手机上的 Glint Eye 要一直开在前台（屏幕会常亮）</li>
                 <li>每个点出现后盯住它的圆心，直到它缩小消失；被手机挡住的点会自动跳过</li>
                 <li>原深感会按三维头姿补偿：校准时自然坐着就行，不用僵着脖子</li>
               </ul>
@@ -459,11 +459,11 @@ function TdPanel(): React.JSX.Element {
   const link = st.link
   const text =
     !link || link.state === 'waiting'
-      ? '在等 iPhone 连上：打开手机上的 LookAskEye，选这台 Mac'
+      ? '在等 iPhone 连上：打开手机上的 Glint Eye，选这台 Mac'
       : link.state === 'unpaired'
         ? '手机连上了，但还没配对：设置 → 眼动 → 输入手机上显示的 4 位配对码'
         : link.state === 'lost'
-          ? 'iPhone 断开了：看看手机上的 LookAskEye 还开着吗'
+          ? 'iPhone 断开了：看看手机上的 Glint Eye 还开着吗'
           : link.state === 'error'
             ? `收不了 iPhone 数据：${link.msg || st.error || ''}`
             : st.face

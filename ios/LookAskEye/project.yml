@@ -22,7 +22,7 @@ targets:
     info:
       path: LookAskEye/Info.plist
       properties:
-        CFBundleDisplayName: LookAskEye
+        CFBundleDisplayName: Glint Eye
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -32,8 +32,8 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIStatusBarStyle: UIStatusBarStyleDefault
-        NSCameraUsageDescription: LookAskEye 用前置原深感摄像头追踪你的头和眼睛：数据只发给你自己的 Mac，不录像、不上传。
-        NSLocalNetworkUsageDescription: 在局域网里找到你 Mac 上的 LookAsk，并把眼动数据发过去（只在本地网络里传）。
+        NSCameraUsageDescription: Glint Eye 用前置原深感摄像头追踪你的头和眼睛：数据只发给你自己的 Mac，不录像、不上传。
+        NSLocalNetworkUsageDescription: 在局域网里找到你 Mac 上的 Glint，并把眼动数据发过去（只在本地网络里传）。
         NSBonjourServices:
           - _lookask._udp
     settings:

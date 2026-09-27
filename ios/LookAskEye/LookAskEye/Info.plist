@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>LookAskEye</string>
+	<string>Glint Eye</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -27,9 +27,9 @@
 		<string>_lookask._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>LookAskEye 用前置原深感摄像头追踪你的头和眼睛：数据只发给你自己的 Mac，不录像、不上传。</string>
+	<string>Glint Eye 用前置原深感摄像头追踪你的头和眼睛：数据只发给你自己的 Mac，不录像、不上传。</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>在局域网里找到你 Mac 上的 LookAsk，并把眼动数据发过去（只在本地网络里传）。</string>
+	<string>在局域网里找到你 Mac 上的 Glint，并把眼动数据发过去（只在本地网络里传）。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

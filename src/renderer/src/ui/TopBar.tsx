@@ -58,10 +58,10 @@ export function TopBar(): React.JSX.Element {
       : link?.state === 'unpaired'
         ? '手机连上了，点这里输入手机上显示的 4 位配对码'
         : link?.state === 'lost'
-          ? 'iPhone 断开了：看看手机上的 LookAskEye 还开着吗、Wi‑Fi 还连着吗（恢复后会自动续上）'
+          ? 'iPhone 断开了：看看手机上的 Glint Eye 还开着吗、Wi‑Fi 还连着吗（恢复后会自动续上）'
           : link?.state === 'error'
             ? link.msg || g.error || ''
-            : '打开手机上的 LookAskEye，选这台 Mac；没有 Wi‑Fi 时 Mac 连手机热点'
+            : '打开手机上的 Glint Eye，选这台 Mac；没有 Wi‑Fi 时 Mac 连手机热点'
     : g.dark
       ? `${g.cameraLabel} 的画面是黑的：镜头被挡住了？在设置 → 眼动里换一个摄像头`
       : g.error || g.cameraLabel

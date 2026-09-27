@@ -294,7 +294,7 @@ export function tdPair(dev: string, code: string): { ok: boolean; error?: string
   const c = String(code || '').trim()
   if (!/^\d{4}$/.test(c)) return { ok: false, error: '配对码是手机上显示的 4 位数字' }
   const s = seen.get(dev)
-  if (!s?.lastRaw) return { ok: false, error: '还没收到这台手机的数据，确认手机上 LookAskEye 开着' }
+  if (!s?.lastRaw) return { ok: false, error: '还没收到这台手机的数据，确认手机上 Glint Eye 开着' }
   if (!verify(tdKey(dev, c), s.lastRaw.json, s.lastRaw.mac)) return { ok: false, error: '配对码不对，看一下手机上显示的 4 位数字' }
   paired.set(dev, { dev, name: s.name, code: c, at: Date.now() })
   savePaired()

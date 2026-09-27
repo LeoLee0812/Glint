@@ -1,8 +1,13 @@
 import SwiftUI
 import ARKit
 
-// 界面：大字连接状态、配对码、帧率和脸有没有追到、小预览窗、Mac 列表、摆放说明
+// Glint Eye 界面：品牌头 + 灯带（连上 Mac 时亮青色，和实体 Glint Eye 的灯带一致）、配对码、帧率和脸有没有追到、小预览窗、Mac 列表、摆放说明
 // 手机竖放：测试时立在 MacBook 屏幕和键盘之间的缝里，以后用背板挂在屏幕后面、镜头露出上沿
+
+/// 品牌青：和 Mac 端视线光环、Glint Eye 灯带同一个颜色
+extension Color {
+    static let glint = Color(red: 30 / 255, green: 170 / 255, blue: 240 / 255)
+}
 
 struct ContentView: View {
     @StateObject private var m = EyeModel()
@@ -20,14 +25,13 @@ struct ContentView: View {
         }
         .onAppear { m.start() }
         .statusBarHidden(m.dark)
+        .tint(.glint)
     }
 
     private var main: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("LookAsk 眼动")
-                    .font(.system(size: 30, weight: .bold))
-                    .padding(.top, 8)
+                header
                 if !m.supported {
                     Card {
                         Text("这台设备不支持原深感人脸追踪")
@@ -56,6 +60,33 @@ struct ContentView: View {
         .background(Color(.systemGroupedBackground))
     }
 
+    // ---------- 品牌头 ----------
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image("Logo")
+                .resizable()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Glint Eye")
+                    .font(.system(size: 30, weight: .bold))
+                    .kerning(-0.5)
+                Text("Glint 瞳问 · 给 Mac 一只眼睛")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    /// 连上并且 Mac 正在用 = 灯带亮
+    private var live: Bool {
+        if case let .paired(_, _, use) = m.macState { return use && m.tracked }
+        return false
+    }
+
     // ---------- 连接状态 ----------
 
     private var statusText: (String, Color) {
@@ -68,15 +99,16 @@ struct ContentView: View {
         case let .needPair(mac):
             return ("在「\(mac)」上输入配对码 \(m.code)", .orange)
         case let .paired(mac, fps, use):
-            return use ? ("已连上「\(mac)」· Mac 收到 \(fps) 帧/秒", .green) : ("已配对，但「\(mac)」没选 iPhone 原深感（Mac 上：设置 → 眼动 → 输入源）", .orange)
+            return use ? ("已连上「\(mac)」· Mac 收到 \(fps) 帧/秒", .glint) : ("已配对，但「\(mac)」没选 iPhone 原深感（Mac 上：设置 → 眼动 → 输入源）", .orange)
         case let .silent(mac):
-            return ("「\(mac)」没回话：Mac 上的 LookAsk 开着吗？", .red)
+            return ("「\(mac)」没回话：Mac 上的 Glint 开着吗？", .red)
         }
     }
 
     private var statusCard: some View {
         Card {
             let (text, color) = statusText
+            LightStrip(on: live)
             HStack(alignment: .top, spacing: 10) {
                 Circle().fill(color).frame(width: 12, height: 12).padding(.top, 7)
                 Text(text).font(.title3.weight(.semibold))
@@ -86,7 +118,7 @@ struct ContentView: View {
             }
             HStack(spacing: 16) {
                 Label(m.tracked ? "看得到脸" : "看不到脸", systemImage: m.tracked ? "face.smiling" : "eye.slash")
-                    .foregroundStyle(m.tracked ? .green : .orange)
+                    .foregroundStyle(m.tracked ? Color.glint : .orange)
                 if let d = m.distanceCm { Text("离手机 \(d) 厘米").foregroundStyle(d < 30 || d > 85 ? .orange : .secondary) }
                 Spacer()
                 Text("发送 \(m.sendFps) 帧/秒").foregroundStyle(.secondary)
@@ -114,10 +146,11 @@ struct ContentView: View {
                     .font(.subheadline)
             }
             Text(m.code)
-                .font(.system(size: 56, weight: .bold, design: .monospaced))
-                .kerning(12)
+                .font(.system(size: 56, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .kerning(14)
                 .frame(maxWidth: .infinity)
-            Text("第一次连这台 Mac 时，在 Mac 上的 LookAsk：设置 → 眼动 → 输入这 4 位数字。之后自动认得。")
+            Text("第一次连这台 Mac 时，在 Mac 上的 Glint：设置 → 眼动 → 输入这 4 位数字。之后自动认得。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -134,7 +167,7 @@ struct ContentView: View {
                     .aspectRatio(3 / 4, contentMode: .fit)
                     .frame(maxWidth: 220)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(m.tracked ? Color.green : Color.orange, lineWidth: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(m.tracked ? Color.glint : Color.orange, lineWidth: 3))
                     .frame(maxWidth: .infinity)
             }
         }
@@ -146,7 +179,7 @@ struct ContentView: View {
         Card {
             Text("附近的 Mac").font(.headline)
             if m.macs.isEmpty {
-                Text("还没找到：Mac 上的 LookAsk 要选「iPhone 原深感」输入源；手机和 Mac 连同一个 Wi‑Fi，或者 Mac 连这台手机的个人热点。")
+                Text("还没找到：Mac 上的 Glint 要选「iPhone 原深感」输入源；手机和 Mac 连同一个 Wi‑Fi，或者 Mac 连这台手机的个人热点。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -211,7 +244,7 @@ struct DarkScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 8) {
-                Text(m.tracked ? "LookAsk 眼动 · 发送中 \(m.sendFps) 帧/秒" : "LookAsk 眼动 · 看不到脸")
+                Text(m.tracked ? "Glint Eye · 发送中 \(m.sendFps) 帧/秒" : "Glint Eye · 看不到脸")
                 Text("点一下回来")
             }
             .font(.footnote)
@@ -230,7 +263,23 @@ struct Card<Content: View>: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+    }
+}
+
+/// 灯带：实体 Glint Eye 正面的那条青色光，连上时亮起并轻轻呼吸
+struct LightStrip: View {
+    let on: Bool
+    @State private var breathe = false
+
+    var body: some View {
+        Capsule()
+            .fill(on ? Color.glint : Color(.systemGray4))
+            .frame(height: 5)
+            .shadow(color: on ? Color.glint.opacity(breathe ? 0.9 : 0.45) : .clear, radius: 8)
+            .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: breathe)
+            .onAppear { breathe = true }
     }
 }
 

@@ -168,7 +168,7 @@ function TdPairing(): React.JSX.Element {
       ))}
       {st?.listening && !st.devices.length && (
         <p className="dim small">
-          还没发现手机：iPhone 上打开 LookAskEye，在列表里点「{st.name}」。手机和 Mac 连同一个 Wi‑Fi；没有 Wi‑Fi 时 Mac 连手机的个人热点，其它不变。
+          还没发现手机：iPhone 上打开 Glint Eye，在列表里点「{st.name}」。手机和 Mac 连同一个 Wi‑Fi；没有 Wi‑Fi 时 Mac 连手机的个人热点，其它不变。
         </p>
       )}
       {offline.map((p) => (

@@ -4,7 +4,7 @@ import { deriveFrame, displayBasis, tdDistanceCm, tdExpr, tdHeadPos, unit, type 
 import { planeOffset, pointsPerMeter } from '../td/mount'
 import type { SourceHooks, TdLink } from '../types'
 
-// 输入源二：iPhone 原深感。手机上的 LookAskEye 用 ARKit 人脸追踪拿头的三维位姿、双眼朝向、表情系数，
+// 输入源二：iPhone 原深感。手机上的 Glint Eye 用 ARKit 人脸追踪拿头的三维位姿、双眼朝向、表情系数，
 // UDP 发到 Mac（原生助手收、主进程验签配对），这里把每帧换成屏幕对齐坐标系里的特征交给引擎。
 // 连接状态：等手机 → 待配对 → 收帧中；3 秒收不到帧算断开，恢复后自动续上
 
@@ -197,7 +197,7 @@ export class TrueDepthSource {
     if (this.link.state !== 'lost') {
       this.setLink({ state: 'lost', distanceCm: null })
       this.hooks.status({ state: 'error', error: 'iPhone 已断开', face: false, fps: 0 })
-      this.lostToast = toast('iPhone 已断开：看看手机上的 LookAskEye 还开着吗、Wi‑Fi 还连着吗', 'warn', { ttl: 8000 })
+      this.lostToast = toast('iPhone 已断开：看看手机上的 Glint Eye 还开着吗、Wi‑Fi 还连着吗', 'warn', { ttl: 8000 })
     }
     this.lastT = Math.max(this.lastT, now)
     this.hooks.frame({ t: now, features: null, face: false, blink: 0, headZ: null, faceBox: null, pose: null, expr: null })

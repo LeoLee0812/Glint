@@ -140,11 +140,11 @@ final class MacLink {
 
     static func describe(_ e: NWError) -> String {
         if case let .dns(code) = e, code == -65570 {
-            return "本地网络权限被关了：设置 → 隐私与安全性 → 本地网络 → 打开 LookAskEye"
+            return "本地网络权限被关了：设置 → 隐私与安全性 → 本地网络 → 打开 Glint Eye"
         }
         if case let .posix(code) = e {
             switch code {
-            case .ECONNREFUSED: return "Mac 没在收（LookAsk 没开，或者没选 iPhone 原深感）"
+            case .ECONNREFUSED: return "Mac 没在收（Glint 没开，或者没选 iPhone 原深感）"
             case .ENETDOWN, .ENETUNREACH, .EHOSTUNREACH: return "网络不通：手机和 Mac 连同一个 Wi‑Fi，或者 Mac 连手机热点"
             default: break
             }

@@ -24,7 +24,7 @@
 ## 能做什么
 
 - **眼动追踪**：普通摄像头 + MediaPipe 人脸 478 点 + 双眼小图特征，17 点校准后岭回归映射到屏幕；One Euro 平滑、注视检测、眨眼帧丢弃
-- **iPhone 原深感眼动**（第二种输入源）：iPhone 上的 LookAskEye 用 ARKit 拿头的三维位姿和双眼朝向，UDP 发给 Mac；Mac 把视线当成三维射线和屏幕平面求交，头挪、歪、前后动视线点都不跟着跑。设置 → 眼动 → 输入源 一键切换，两种源的校准分开存
+- **iPhone 原深感眼动**（第二种输入源）：iPhone 上的 Glint Eye（`ios/LookAskEye`）用 ARKit 拿头的三维位姿和双眼朝向，UDP 发给 Mac；Mac 把视线当成三维射线和屏幕平面求交，头挪、歪、前后动视线点都不跟着跑。设置 → 眼动 → 输入源 一键切换，两种源的校准分开存
 - **越用越准**：用摇杆把焦点挪到目标再按 A，那一刻就是一次隐式校准；按 − 做漂移校正，头动了不用重新校准；读着读着视线点飘了，`⌥ + 点击` 正在看的地方，视线点当场拉回来
 - **焦点系统**：视线落到哪段就淡淡圈出哪段（软焦点）；一推右摇杆变成逐词 / 逐行移动的硬焦点；R 键在「词 → 句 → 段 → 节」之间切
 - **吸附**：视线圈会被附近的关键词（术语、缩写、公式、加粗……）吸过去包住；吸住时推右摇杆，硬焦点直接落在那个词上；软焦点也带迟滞，眼动抖出段外一点不会跳段。强度在「设置 → 眼动 → 吸附强度」里调（默认 70%，40% 左右是最早的手感）
@@ -86,7 +86,7 @@
 
 **用法**：
 
-1. iPhone 装上 `LookAskEye`（`ios/LookAskEye`，见下面「开发」），打开，屏幕会常亮
+1. iPhone 装上 Glint Eye（`ios/LookAskEye`，见下面「开发」），打开，屏幕会常亮
 2. 手机竖放、前置镜头对着脸、离脸 40～70 厘米：
    - 测试时：立在 MacBook 屏幕和键盘之间的缝里（手机会挡住屏幕中下部，校准时被挡住的点自动跳过）
    - 以后：用背板挂在屏幕后面，镜头露出屏幕上沿
@@ -133,7 +133,7 @@ Joy-Con L/R ─ IOHIDManager 原始报告（Swift 原生助手）─ 按键路�
 - `src/renderer/src/focus`：焦点控制器和三种适配器（DOM 文字、终端、屏幕）
 - `src/renderer/src/input`：Joy-Con 解码与按键路由
 - `native/LookAskBridge`：Swift 原生助手（Joy-Con HID、语音、原深感 UDP 收包 + Bonjour 广播），stdin/stdout 走 JSON 行协议
-- `ios/LookAskEye`：iPhone 端 App（SwiftUI + ARKit + Network.framework），工程由 XcodeGen 生成
+- `ios/LookAskEye`：iPhone 端 App Glint Eye（SwiftUI + ARKit + Network.framework），工程由 XcodeGen 生成
 
 ## 安装
 

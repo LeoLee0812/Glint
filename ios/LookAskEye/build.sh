@@ -1,5 +1,5 @@
 #!/bin/bash
-# LookAskEye 构建脚本
+# Glint Eye（工程名 LookAskEye）构建脚本
 #   bash ios/LookAskEye/build.sh test     # 生成工程 + 在模拟器上跑单元测试
 #   bash ios/LookAskEye/build.sh ipa      # 无签名 .ipa → release/ios/（以后用 Sideloadly / AltStore 拿 Apple ID 重签安装）
 #   bash ios/LookAskEye/build.sh device   # 用本机个人团队证书签名，装到插着线（或同一 Wi‑Fi、已解锁）的 iPhone 上
@@ -29,9 +29,9 @@ case "${1:-}" in
     mkdir -p "$TMP/Payload" "$OUT"
     cp -R "$DD/Build/Products/Release-iphoneos/LookAskEye.app" "$TMP/Payload/"
     VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$TMP/Payload/LookAskEye.app/Info.plist")
-    (cd "$TMP" && zip -qry "$OUT/LookAskEye-$VER-unsigned.ipa" Payload)
+    (cd "$TMP" && zip -qry "$OUT/GlintEye-$VER-unsigned.ipa" Payload)
     rm -rf "$TMP"
-    echo "==> $OUT/LookAskEye-$VER-unsigned.ipa"
+    echo "==> $OUT/GlintEye-$VER-unsigned.ipa"
     ;;
   device)
     DEVICE=$(xcrun devicectl list devices 2>/dev/null | grep -E 'iPhone' | grep -v unavailable | grep -oE '[0-9A-F]{8}-[0-9A-F-]{27}' | head -1)
