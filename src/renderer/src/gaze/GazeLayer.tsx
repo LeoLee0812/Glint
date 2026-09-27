@@ -8,7 +8,7 @@ import { unionBox } from '../focus/types'
 import { boundsStore, clientToScreen, screenToClient, settingsStore, uiStore } from '../appState'
 import { GazeBlob, type BlobTarget } from './blob'
 
-// 主窗口里的视线光环 + 焦点高亮（全局模式下这些画在透明浮层里，这里不画）
+// 主窗口里的视线光环 + 焦点高亮
 // 光环吸附规则：硬焦点 → 整个包住选中的词/句；软焦点 → 盯住时被附近的关键词吸过去，扫视时不吸
 // 藏起来时不飞回左上角：眼睛去了另一侧就朝那个方向滑走、边走边淡，别的情况原地淡出
 // 吸得多积极、多牢、多久才松开，都跟着「吸附强度」（设置 → 眼动）走；吸着的词记在 magnetNow，推右摇杆时从它起步
@@ -36,7 +36,7 @@ function createTargetSource(): () => BlobTarget {
 
   return () => {
     const ui = uiStore.get()
-    if (ui.mode === 'global' || ui.showCalibration || settingsStore.get().s?.gaze.showCursor === false) return fade()
+    if (ui.showCalibration || settingsStore.get().s?.gaze.showCursor === false) return fade()
 
     let p: { x: number; y: number } | null = null
     let confidence = 1
@@ -146,7 +146,7 @@ export function GazeLayer(): React.JSX.Element | null {
   }, [])
 
   // 截图时整层先藏起来（截图上会另外画一个干净的蓝圈）
-  const hidden = ui.mode === 'global' || ui.showCalibration || ui.capturing
+  const hidden = ui.showCalibration || ui.capturing
 
   return (
     <div className="gaze-layer" style={{ display: hidden ? 'none' : undefined }}>

@@ -13,3 +13,6 @@ settings.local.json
 src/renderer/public/mediapipe/
 src/renderer/public/pdfjs/
 *.tsbuildinfo
+# iOS 工程的编译产物和 Xcode 个人状态
+ios/.build/
+xcuserdata/

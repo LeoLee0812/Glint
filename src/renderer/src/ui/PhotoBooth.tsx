@@ -33,10 +33,25 @@ function BoothInner(): React.JSX.Element {
   const [, setTick] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [faceOk, setFaceOk] = useState(false)
+  // 输入源是原深感时摄像头是借来的，状态不在 gaze.status 里，按画面有没有出来判断
+  const borrowed = st.source === 'truedepth'
+  const [camUp, setCamUp] = useState(false)
+  useEffect(() => {
+    if (!borrowed) return
+    const id = setInterval(() => setCamUp(gaze.webcamReady()), 300)
+    return () => clearInterval(id)
+  }, [borrowed])
+  const camReady = borrowed ? camUp : st.state === 'running'
+  const camNote = borrowed ? '摄像头启动中…（拍照临时借用 Mac 摄像头）' : st.state === 'loading' ? '摄像头启动中…' : st.error || '摄像头没开'
 
   const close = () => uiStore.patch({ showBooth: false })
 
   useEffect(() => {
+    // 输入源是 iPhone 原深感时，临时借用摄像头拍照，关窗口就还回去
+    if (gaze.source === 'truedepth') {
+      gaze.borrowWebcam(s?.gaze.cameraId || undefined)
+      return () => gaze.releaseWebcam()
+    }
     if (gaze.status.get().state !== 'running') gaze.start(s?.gaze.cameraId || undefined)
   }, [])
 
@@ -155,7 +170,7 @@ function BoothInner(): React.JSX.Element {
               <canvas ref={canvasRef} style={{ width: PREVIEW_W, height: PREVIEW_H }} />
               <div className={`booth-oval ${faceOk ? 'ok' : ''}`} />
               {step === 'count' && <div className="booth-count">{count}</div>}
-              {st.state !== 'running' && <div className="booth-note">{st.state === 'loading' ? '摄像头启动中…' : st.error || '摄像头没开'}</div>}
+              {!camReady && <div className="booth-note">{camNote}</div>}
             </div>
           ) : (
             <div className="booth-result">
@@ -204,7 +219,7 @@ function BoothInner(): React.JSX.Element {
             )
           ) : (
             <>
-              <button className="btn primary" onClick={shoot} disabled={step !== 'live' || st.state !== 'running' || av.busy}>
+              <button className="btn primary" onClick={shoot} disabled={step !== 'live' || !camReady || av.busy}>
                 {av.busy ? '上一个小人还在画…' : '拍照（A）· 倒数 3 秒'}
               </button>
               <button className="btn" onClick={close}>

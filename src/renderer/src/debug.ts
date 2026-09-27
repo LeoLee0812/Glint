@@ -7,7 +7,7 @@ import { docsStore, openDoc } from './panes/docs'
 import { input } from './input/joycon'
 import * as jevBrain from './jev/jevBrain'
 import { jevStore } from './jev/jevBrain'
-import { uiStore, settingsStore, toastStore } from './appState'
+import { uiStore, settingsStore, toastStore, boundsStore, updateSettings, clientToScreen } from './appState'
 import { terminals } from './panes/TerminalPane'
 import { avatarStore, takeHeadshot, generateAvatar } from './avatar/avatar'
 
@@ -33,6 +33,9 @@ if (import.meta.env.DEV) {
     jevBrain,
     avatarStore,
     takeHeadshot,
-    generateAvatar
+    generateAvatar,
+    boundsStore,
+    updateSettings,
+    clientToScreen
   }
 }

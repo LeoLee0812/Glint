@@ -5,9 +5,12 @@ import { uiStore, setUiMode, settingsStore, clientToScreen, screenToClient, toas
 import { input } from '../input/joycon'
 import type { FitInput } from './ridge'
 import { avatarStore } from '../avatar/avatar'
+import { occludedRegion, isOccluded, visibleCenter } from './td/mount'
 
-// 全屏校准：盯着点看，点缩小时采集眼睛特征；结束后在 Worker 里拟合并给出交叉验证误差
+// 全屏校准：盯着点看，点缩小时采集眼睛特征；结束后拟合并给出交叉验证误差
+// （摄像头在 Worker 里拟合岭回归；iPhone 原深感拟合几何模型）
 // 另有两个轻量流程：精度测试（5 个随机点量真实误差）、漂移校正（盯中心点 1.5 秒）
+// iPhone 竖放在屏幕和键盘之间时会挡住屏幕中下部，被挡住的点自动跳过
 
 type Phase = 'intro' | 'points' | 'fitting' | 'result' | 'validate' | 'validateResult' | 'drift'
 
@@ -39,6 +42,12 @@ function pattern(n: 9 | 17): Array<[number, number]> {
   return out
 }
 
+/** 原深感竖放在屏幕下方时手机挡住的那块（0~1 坐标）；其它情况 null */
+function occluded(): ReturnType<typeof occludedRegion> {
+  if (gaze.source !== 'truedepth') return null
+  return occludedRegion(settingsStore.get().s?.gaze.tdMount ?? 'bottom', gaze.td.display)
+}
+
 function ptToDeg(px: number): number {
   // 估算：macOS 默认缩放下 1pt ≈ 0.023cm，眼睛到屏幕按 55cm 算
   return (Math.atan((px * 0.023) / 55) * 180) / Math.PI
@@ -58,27 +67,30 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
   const [dot, setDot] = useState<{ x: number; y: number; shrink: boolean } | null>(null)
   const [idx, setIdx] = useState(0)
   const [total, setTotal] = useState(0)
-  const [result, setResult] = useState<{ cv: number | null; ms: number; samples: number } | null>(null)
+  const [result, setResult] = useState<{ cv: number | null; ms: number; samples: number; note?: string; skipped: number } | null>(null)
   const [valErr, setValErr] = useState<{ px: number; deg: number; points: Array<{ tx: number; ty: number; gx: number; gy: number }> } | null>(null)
   const [face, setFace] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef(false)
   const scaleRef = useRef<number | null>(null)
 
+  const td = status.source === 'truedepth'
+
   // 进全屏；退出时还原窗口
   useEffect(() => {
     abortRef.current = false
     setUiMode('calibration')
     if (gaze.status.get().state !== 'running') gaze.start(settings?.gaze.cameraId || undefined)
+    if (gaze.source === 'truedepth') gaze.td.refreshDisplay()
     return () => {
       abortRef.current = true
       setUiMode('normal')
     }
   }, [])
 
-  // 预览摄像头 + 人脸框
+  // 预览摄像头 + 人脸框（原深感没有画面，显示连接状态）
   useEffect(() => {
-    if (phase !== 'intro' || !previewRef.current) return
+    if (phase !== 'intro' || !previewRef.current || td) return
     const v = gaze.video
     v.className = 'calib-video'
     previewRef.current.prepend(v)
@@ -89,7 +101,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
       v.remove()
       v.play().catch(() => undefined)
     }
-  }, [phase])
+  }, [phase, td])
 
   const close = () => uiStore.patch({ showCalibration: false })
 
@@ -121,12 +133,14 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
 
   async function run(): Promise<void> {
     if (status.state !== 'running') {
-      toast('摄像头还没准备好', 'warn')
+      toast(td ? 'iPhone 还没连上：打开手机上的 LookAskEye，并在设置里配好对' : '摄像头还没准备好', 'warn')
       return
     }
     await waitFullscreen()
     await sleep(250)
-    const pts = pattern(settings?.gaze.calibrationPoints ?? 17)
+    const all = pattern(settings?.gaze.calibrationPoints ?? 17)
+    const occ = occluded()
+    const pts = all.filter(([u, v]) => !isOccluded(occ, u, v))
     setTotal(pts.length)
     setPhase('points')
     const W = window.innerWidth
@@ -174,12 +188,13 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
       return
     }
     setPhase('fitting')
+    // 让「正在拟合」先画出来（原深感在主线程拟合，约零点几秒）
+    await sleep(30)
     const input: FitInput = { rows, tx, ty, groups, screenW: W, screenH: H }
     try {
-      const { model, ms } = await gaze.fit(input)
       scaleRef.current = zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null
-      gaze.setModel(model, scaleRef.current, meanPose(poses))
-      setResult({ cv: model.cvErrorPx, ms, samples: rows.length })
+      const r = await gaze.calibrate(input, scaleRef.current, meanPose(poses))
+      setResult({ cv: r.cv, ms: r.ms, samples: rows.length, note: r.note, skipped: all.length - pts.length })
       setPhase('result')
       rumble('done', 'R')
     } catch (e: any) {
@@ -198,7 +213,8 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     await sleep(300)
     const W = window.innerWidth
     const H = window.innerHeight
-    const pts: Array<[number, number]> = [[0.5, 0.5], [0.2, 0.25], [0.8, 0.3], [0.25, 0.78], [0.78, 0.75]]
+    // 屏幕中心被手机挡住时换成手机上方的点
+    const pts: Array<[number, number]> = [visibleCenter(occluded()), [0.2, 0.25], [0.8, 0.3], [0.25, 0.78], [0.78, 0.75]]
     setTotal(pts.length)
     const out: Array<{ tx: number; ty: number; gx: number; gy: number }> = []
     for (let i = 0; i < pts.length; i++) {
@@ -237,8 +253,9 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     }
     await waitFullscreen()
     await sleep(250)
-    const cx = window.innerWidth / 2
-    const cy = window.innerHeight / 2
+    const [cu, cv] = visibleCenter(occluded())
+    const cx = window.innerWidth * cu
+    const cy = window.innerHeight * cv
     setDot({ x: cx, y: cy, shrink: false })
     await sleep(30)
     setDot({ x: cx, y: cy, shrink: true })
@@ -260,42 +277,57 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     <div className="calib">
       {phase === 'intro' && (
         <div className="calib-intro">
-          <h1>眼动校准</h1>
-          <div className="calib-preview" ref={previewRef}>
-            {face && (
-              <div
-                className="calib-facebox"
-                style={{
-                  left: `${(1 - face.x - face.w) * 100}%`,
-                  top: `${face.y * 100}%`,
-                  width: `${face.w * 100}%`,
-                  height: `${face.h * 100}%`
-                }}
-              />
-            )}
-            {status.dark ? (
-              <div className="calib-noface">画面是黑的：{status.cameraLabel} 被挡住了？到 设置 → 眼动 换摄像头</div>
-            ) : (
-              !status.face && <div className="calib-noface">画面里没找到脸</div>
-            )}
-          </div>
-          <div className="calib-meta">
-            <span>摄像头：{status.cameraLabel || '启动中…'}</span>
-            <span>帧率：{status.fps} fps</span>
-            <span>
-              脸占画面：{scale ? `${Math.round(scale * 100)}%` : '—'}
-              {scale && scale > 0.42 ? '（太近了，往后坐一点）' : scale && scale < 0.13 ? '（太远了，往前坐一点）' : ''}
-            </span>
-          </div>
-          <PoseHint />
-          <ul className="calib-tips">
-            <li>坐正，眼睛离屏幕 45～65 厘米；接下来 25 秒尽量别动头，只动眼睛</li>
-            <li>每个点出现后盯住它的圆心，直到它缩小消失</li>
-            <li>
-              M4 MacBook Air 的「人物居中」会自动裁切画面，校准会失效：控制中心 → 视频效果 → 关掉人物居中
-            </li>
-            <li>光线从正面来最好，别背光；反光眼镜会降低精度</li>
-          </ul>
+          <h1>眼动校准{td ? ' · iPhone 原深感' : ''}</h1>
+          {td ? (
+            <>
+              <TdPanel />
+              <TdPoseHint />
+              <ul className="calib-tips">
+                <li>手机竖放：测试时立在屏幕和键盘之间的缝里，以后可以用背板挂在屏幕后面、镜头露出屏幕上沿；放好后别再碰它，碰了要重新校准</li>
+                <li>前置镜头对着脸，离脸 40～70 厘米；手机上的 LookAskEye 要一直开在前台（屏幕会常亮）</li>
+                <li>每个点出现后盯住它的圆心，直到它缩小消失；被手机挡住的点会自动跳过</li>
+                <li>原深感会按三维头姿补偿：校准时自然坐着就行，不用僵着脖子</li>
+              </ul>
+            </>
+          ) : (
+            <>
+              <div className="calib-preview" ref={previewRef}>
+                {face && (
+                  <div
+                    className="calib-facebox"
+                    style={{
+                      left: `${(1 - face.x - face.w) * 100}%`,
+                      top: `${face.y * 100}%`,
+                      width: `${face.w * 100}%`,
+                      height: `${face.h * 100}%`
+                    }}
+                  />
+                )}
+                {status.dark ? (
+                  <div className="calib-noface">画面是黑的：{status.cameraLabel} 被挡住了？到 设置 → 眼动 换摄像头</div>
+                ) : (
+                  !status.face && <div className="calib-noface">画面里没找到脸</div>
+                )}
+              </div>
+              <div className="calib-meta">
+                <span>摄像头：{status.cameraLabel || '启动中…'}</span>
+                <span>帧率：{status.fps} fps</span>
+                <span>
+                  脸占画面：{scale ? `${Math.round(scale * 100)}%` : '—'}
+                  {scale && scale > 0.42 ? '（太近了，往后坐一点）' : scale && scale < 0.13 ? '（太远了，往前坐一点）' : ''}
+                </span>
+              </div>
+              <PoseHint />
+              <ul className="calib-tips">
+                <li>坐正，眼睛离屏幕 45～65 厘米；接下来 25 秒尽量别动头，只动眼睛</li>
+                <li>每个点出现后盯住它的圆心，直到它缩小消失</li>
+                <li>
+                  M4 MacBook Air 的「人物居中」会自动裁切画面，校准会失效：控制中心 → 视频效果 → 关掉人物居中
+                </li>
+                <li>光线从正面来最好，别背光；反光眼镜会降低精度</li>
+              </ul>
+            </>
+          )}
           <div className="calib-actions">
             <button className="btn primary" onClick={run} disabled={status.state !== 'running'}>
               开始校准（A / 空格）
@@ -331,10 +363,17 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
             {result.cv != null && <small>（约 {ptToDeg(result.cv).toFixed(1)}°）</small>}
           </p>
           <p className="dim">
-            {result.samples} 帧样本 · 拟合 {Math.round(result.ms)} ms。普通摄像头能到段落级，最后一步靠 Joy-Con 摇杆微调。
+            {result.samples} 帧样本 · 拟合 {Math.round(result.ms)} ms
+            {result.skipped ? ` · 手机挡住的 ${result.skipped} 个点已跳过` : ''}。
+            {td ? '原深感按三维头姿换算视线，头挪一挪、歪一歪也不会整体偏；最后精确到词仍然靠吸附和摇杆。' : '普通摄像头能到段落级，最后一步靠 Joy-Con 摇杆微调。'}
           </p>
+          {result.note && <p className="warn">{result.note}</p>}
           {result.cv != null && result.cv > 250 && (
-            <p className="warn">误差偏大：多半是校准时头动了、光线从背后来，或者没盯住点。调好再「重新校准」一次。</p>
+            <p className="warn">
+              {td
+                ? '误差偏大：多半是没盯住点、手机被碰动了，或者手机离脸太远。调好再「重新校准」一次。'
+                : '误差偏大：多半是校准时头动了、光线从背后来，或者没盯住点。调好再「重新校准」一次。'}
+            </p>
           )}
           <div className="calib-actions">
             <button className="btn primary" onClick={close}>
@@ -409,6 +448,55 @@ function PoseHint(): React.JSX.Element {
     bad = true
   } else if (Math.abs(cur.cy - 0.45) > 0.2) {
     tip = cur.cy > 0.45 ? '脸在画面偏下，坐高一点或把屏幕往下压一点' : '脸在画面偏上，往下坐一点'
+    bad = true
+  }
+  return <div className={`calib-pose ${bad ? 'bad' : 'ok'}`}>{tip}</div>
+}
+
+/** 原深感：校准前看一眼手机连上没、看不看得到脸、离多远 */
+function TdPanel(): React.JSX.Element {
+  const st = useStore(gaze.status)
+  const link = st.link
+  const text =
+    !link || link.state === 'waiting'
+      ? '在等 iPhone 连上：打开手机上的 LookAskEye，选这台 Mac'
+      : link.state === 'unpaired'
+        ? '手机连上了，但还没配对：设置 → 眼动 → 输入手机上显示的 4 位配对码'
+        : link.state === 'lost'
+          ? 'iPhone 断开了：看看手机上的 LookAskEye 还开着吗'
+          : link.state === 'error'
+            ? `收不了 iPhone 数据：${link.msg || st.error || ''}`
+            : st.face
+              ? '已连上，看得到你的脸'
+              : '已连上，但手机看不到你的脸：前置镜头对着脸，别挡住'
+  const ok = link?.state === 'live' && st.face
+  return (
+    <div className={`calib-td ${ok ? 'ok' : 'bad'}`}>
+      <div className="calib-td-main">{text}</div>
+      <div className="calib-meta">
+        <span>手机：{link?.device || '—'}</span>
+        <span>帧率：{link?.state === 'live' ? `${st.fps} fps` : '—'}</span>
+        <span>丢包：{link?.state === 'live' ? `${Math.round((link.loss || 0) * 100)}%` : '—'}</span>
+        <span>眼睛离屏幕：{link?.distanceCm ? `${link.distanceCm} 厘米` : '—'}</span>
+      </div>
+    </div>
+  )
+}
+
+/** 原深感的摆位提示：只管远近和手机看不看得到脸（头的位置、转角会被几何补偿） */
+function TdPoseHint(): React.JSX.Element {
+  const st = useStore(gaze.status)
+  const d = st.link?.distanceCm ?? null
+  let tip = '坐到平时的位置就行：原深感会补偿头动，校准时不用僵着'
+  let bad = false
+  if (st.link?.state !== 'live' || !st.face) {
+    tip = '先让手机的前置镜头看到你的脸'
+    bad = true
+  } else if (d != null && d < 30) {
+    tip = '离手机太近了，往后靠一点（40～70 厘米最好）'
+    bad = true
+  } else if (d != null && d > 85) {
+    tip = '离手机太远了，往前凑一点（40～70 厘米最好）'
     bad = true
   }
   return <div className={`calib-pose ${bad ? 'bad' : 'ok'}`}>{tip}</div>
