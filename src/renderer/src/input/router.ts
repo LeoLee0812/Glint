@@ -1,8 +1,8 @@
 import { input, type ButtonEvent } from './joycon'
-import { focus, panes } from '../focus/focus'
+import { focus, panes, switchSide, sideOfPane } from '../focus/focus'
 import type { Dir, PaneAdapter } from '../focus/types'
 import { gaze } from '../gaze/engine'
-import { ask, abort, chatStore, addNote } from '../chat/chatStore'
+import { ask, abort, chatStore, addNote, popFork } from '../chat/chatStore'
 import { activeDoc, cycleDoc } from '../panes/docs'
 import { terminals, KEYS, type TermHandle } from '../panes/TerminalPane'
 import { la, uiStore, settingsStore, updateSettings, toast, rumble, setUiMode, screenToClient } from '../appState'
@@ -10,19 +10,25 @@ import { onDwell, setSuggestHandler, setTerminalAlertHandler, setFactHandler, je
 import { docsStore } from '../panes/docs'
 
 // 按键路由：左手 Joy-Con 管左边（滚动、翻页、终端按键、对 Qwen Code 说话），
-// 右手 Joy-Con 管右边（微调焦点、解释/翻译/总结、按住问 AI、Jev 开关）
+// 右手 Joy-Con 管右边（微调焦点、解释/翻译/总结、按住问 AI）
+// − / + 决定视线跟哪一边：− 左边内容，+ 右边 AI 回答（右边问到的解释往下裂变出一个窗口）
 
 function leftAdapter(): PaneAdapter | null {
   const d = activeDoc()
   return d ? panes.get(`doc:${d.id}`) : null
 }
 
-/** 左边当前是终端，且眼睛/焦点不在右侧对话区 → 十字键当方向键用 */
+/** 没有焦点时，滚动 / 翻页落到视线跟着的那一侧 */
+function sidePane(): PaneAdapter | null {
+  return uiStore.get().side === 'right' ? panes.get('chat') : leftAdapter()
+}
+
+/** 左边当前是终端，且视线跟着左边 → 十字键当方向键用 */
 function activeTerminal(): TermHandle | null {
   const d = activeDoc()
-  if (!d || d.kind !== 'terminal' || uiStore.get().mode === 'global') return null
+  if (!d || d.kind !== 'terminal' || uiStore.get().mode === 'global' || uiStore.get().side === 'right') return null
   const fp = focus.state.get().paneId
-  if (fp === 'chat') return null
+  if (sideOfPane(fp) === 'right') return null
   return terminals.get(d.id) || null
 }
 
@@ -122,19 +128,30 @@ la.bridge.onEvent((e) => {
 
 function onButton(e: ButtonEvent): void {
   const u = uiStore.get()
-  if (u.showCalibration || u.showSettings || u.showHelp) return
+  if (u.showCalibration || u.showSettings || u.showHelp || u.showBooth) return
   const term = activeTerminal()
 
   if (!e.down) {
     if (e.btn === 'ZR' || e.btn === 'ZL') stopVoice()
     const short = (e.heldMs ?? 0) < 650
     if (e.btn === 'Home' && short) la.win.toggleVisible()
-    if (e.btn === 'Minus' && short && !term) driftCorrect()
+    // − 短按：视线切回左边；已经在左边时还是老功能（终端里 ⇧Tab，其余漂移校正）
+    if (e.btn === 'Minus' && short) {
+      if (u.side !== 'left') switchSide('left')
+      else if (term) term.write(KEYS.shiftTab)
+      else driftCorrect()
+    }
+    // + 短按：视线切到右边的 AI 回答
+    if (e.btn === 'Plus' && short) {
+      if (u.side !== 'right') switchSide('right')
+      else toast('视线已经跟着右边的回答（− 回左边，长按 + 开关 Jev）', 'info')
+    }
     return
   }
 
   if (e.long) {
     if (e.btn === 'Minus') uiStore.patch({ showCalibration: true, calibrationKind: 'full' })
+    if (e.btn === 'Plus') toggleJev()
     if (e.btn === 'Home' && uiStore.get().mode === 'global') {
       setUiMode('normal')
       toast('已回到普通模式', 'info')
@@ -161,6 +178,9 @@ function onButton(e: ButtonEvent): void {
       break
     case 'B':
       if (chatStore.get().busy) abort()
+      else if (focus.state.get().mode === 'hard') focus.release()
+      // 右侧模式：B 一层层收起往下裂变出的解释窗口
+      else if (u.side === 'right' && popFork()) rumble('soft', 'R')
       else focus.release()
       break
     case 'R':
@@ -170,9 +190,6 @@ function onButton(e: ButtonEvent): void {
     case 'RS':
       focus.snapToGaze(true)
       rumble('soft', 'R')
-      break
-    case 'Plus':
-      toggleJev()
       break
     case 'ZR':
       startVoice('chat')
@@ -195,15 +212,11 @@ function onButton(e: ButtonEvent): void {
       break
     case 'Right':
       if (term) approveInTerminal(term)
-      else (focus.activePane() || leftAdapter())?.page?.(1)
+      else (focus.activePane() || sidePane())?.page?.(1)
       break
     case 'Left':
       if (term) term.write(KEYS.esc)
-      else (focus.activePane() || leftAdapter())?.page?.(-1)
-      break
-    case 'Minus':
-      // 终端里 − = Shift+Tab（切换 Qwen Code 的模式）；其它情况在抬起时做漂移校正
-      if (term) term.write(KEYS.shiftTab)
+      else (focus.activePane() || sidePane())?.page?.(-1)
       break
     case 'Capture':
       implicitCalibrate()
@@ -258,7 +271,7 @@ let autoCooldown = 0
 function scrollTarget(): PaneAdapter | null {
   const p = focus.activePane()
   if (p && p.id !== 'screen') return p
-  return leftAdapter()
+  return sidePane()
 }
 
 function tick(t: number): void {
@@ -333,7 +346,7 @@ requestAnimationFrame(tick)
 focus.events.on('dwell', (d) => {
   if (!jevEnabled()) return
   const doc = docsStore.get().docs.find((x) => `doc:${x.id}` === d.paneId)
-  onDwell(d, { aiReply: d.paneId === 'chat' || !!doc?.title.startsWith('AI 回复') })
+  onDwell(d, { aiReply: sideOfPane(d.paneId) === 'right' || !!doc?.title.startsWith('AI 回复') })
 })
 
 setFactHandler(({ trace, risk }) => {

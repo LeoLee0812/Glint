@@ -52,18 +52,28 @@ export function clientToScreen(x: number, y: number): { x: number; y: number } {
 }
 
 export type UiMode = 'normal' | 'calibration' | 'global'
+/** 视线跟哪一边：左 = 阅读内容（全局模式下是整块屏幕），右 = AI 回答区 */
+export type Side = 'left' | 'right'
 export const uiStore = createStore<{
   mode: UiMode
+  side: Side
   showSettings: boolean
   showHelp: boolean
   showCalibration: boolean
   calibrationKind: 'full' | 'validate' | 'drift'
+  /** 拍大头照 / 生成小人的弹窗 */
+  showBooth: boolean
+  /** 正在截主窗口：视线圈、焦点框、小人这些浮在上面的东西先藏起来 */
+  capturing: boolean
 }>({
   mode: 'normal',
+  side: 'left',
   showSettings: false,
   showHelp: false,
   showCalibration: false,
-  calibrationKind: 'full'
+  calibrationKind: 'full',
+  showBooth: false,
+  capturing: false
 })
 
 // 主进程才是窗口模式的权威来源（渲染进程刷新后要跟上）

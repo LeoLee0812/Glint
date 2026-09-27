@@ -117,6 +117,8 @@ export interface DomAdapterOpts {
   docTitle: () => string
   capture?: (rect: Box) => Promise<string | null>
   page?: (delta: number) => void
+  /** 焦点所在的上层条目（对话区的消息 id、解释窗口的卡片 id），写进上下文的 ref */
+  refOf?: (node: Node) => string | undefined
 }
 
 export class DomAdapter implements PaneAdapter {
@@ -383,7 +385,8 @@ export class DomAdapter implements PaneAdapter {
       paragraph: clip(b?.text() ?? '', 2400),
       section: sec?.title,
       before: before ? clip(before.slice(-700), 700) : undefined,
-      after: after ? clip(after, 400) : undefined
+      after: after ? clip(after, 400) : undefined,
+      ref: this.o.refOf?.(da.node)
     }
   }
 

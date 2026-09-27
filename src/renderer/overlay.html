@@ -6,20 +6,21 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
     <style>
       html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100vw; height: 100vh; }
-      #gaze { position: fixed; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
-        border: 2px solid rgba(94, 234, 212, 0.85); box-shadow: 0 0 18px rgba(94, 234, 212, 0.45); pointer-events: none;
-        transition: transform 60ms linear; display: none; }
-      #focus { position: fixed; border-radius: 8px; pointer-events: none; display: none;
-        border: 2px solid rgba(250, 204, 21, 0.9); background: rgba(250, 204, 21, 0.10); box-shadow: 0 0 0 4000px rgba(0,0,0,0.0); }
-      #focus.soft { border-color: rgba(94, 234, 212, 0.55); background: rgba(94, 234, 212, 0.06); border-style: dashed; }
-      #label { position: fixed; pointer-events: none; display: none; font: 12px -apple-system, "PingFang SC", sans-serif;
-        color: #0b0f14; background: rgba(250, 204, 21, 0.95); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+      #blob { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+      #focus { position: fixed; border-radius: 10px; pointer-events: none; display: none;
+        background: rgba(0, 122, 255, 0.14);
+        transition: left 140ms cubic-bezier(0.25, 0.8, 0.25, 1), top 140ms cubic-bezier(0.25, 0.8, 0.25, 1),
+          width 140ms cubic-bezier(0.25, 0.8, 0.25, 1), height 140ms cubic-bezier(0.25, 0.8, 0.25, 1); }
+      #focus.soft { border: 1.5px solid rgba(30, 170, 240, 0.35); background: rgba(30, 170, 240, 0.05); }
+      #label { position: fixed; pointer-events: none; display: none; font: 600 12px -apple-system, "PingFang SC", sans-serif;
+        color: #fff; background: #007aff; padding: 3px 10px; border-radius: 99px; white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0, 122, 255, 0.35); }
     </style>
   </head>
   <body>
     <div id="focus"></div>
     <div id="label"></div>
-    <div id="gaze"></div>
+    <canvas id="blob"></canvas>
     <script type="module" src="./overlay/overlay.ts"></script>
   </body>
 </html>

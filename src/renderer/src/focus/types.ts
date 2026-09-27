@@ -38,6 +38,14 @@ export interface FocusContext {
   app?: string
   /** 终端 / 屏幕上附带的大段原文 */
   extra?: string
+  /** 焦点落在哪条消息 / 哪张解释卡片里（对话区用，决定解释窗口从哪一层往下裂变） */
+  ref?: string
+  /** 对话区：这段回答当初是在回应什么 */
+  origin?: string
+  /** 整张截图：截的是哪一块（左侧阅读区 / 右侧回答区 / 整块屏幕） */
+  region?: string
+  /** 整张截图上有没有画蓝圈标出视线位置 */
+  circle?: boolean
 }
 
 export type Anchor = { pane: string } & Record<string, any>
