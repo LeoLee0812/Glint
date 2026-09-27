@@ -53,13 +53,30 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
       scrollback: 8000,
       allowProposedApi: true,
       macOptionIsMeta: false,
+      // 白底终端：Qwen Code 默认是深色主题，靠最低对比度自动把浅色字压深，不会糊成一片
+      minimumContrastRatio: 4.5,
       theme: {
-        background: '#0b0d11',
-        foreground: '#d7dde8',
-        cursor: '#5eead4',
-        selectionBackground: '#334155',
-        black: '#1b1f27',
-        brightBlack: '#5c6370'
+        background: '#ffffff',
+        foreground: '#1d1d1f',
+        cursor: '#007aff',
+        cursorAccent: '#ffffff',
+        selectionBackground: 'rgba(0, 122, 255, 0.22)',
+        black: '#1d1d1f',
+        red: '#d70015',
+        green: '#248a3d',
+        yellow: '#b25000',
+        blue: '#0040dd',
+        magenta: '#8944ab',
+        cyan: '#0071a4',
+        white: '#8e8e93',
+        brightBlack: '#6e6e73',
+        brightRed: '#ff3b30',
+        brightGreen: '#34c759',
+        brightYellow: '#ff9500',
+        brightBlue: '#007aff',
+        brightMagenta: '#af52de',
+        brightCyan: '#32ade6',
+        brightWhite: '#c7c7cc'
       }
     })
     const fit = new FitAddon()

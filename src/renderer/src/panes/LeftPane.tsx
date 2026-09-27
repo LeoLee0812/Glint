@@ -5,10 +5,11 @@ import { MarkdownPane } from './MarkdownPane'
 import { PdfPane } from './PdfPane'
 import { TerminalPane } from './TerminalPane'
 import { WindowPane } from './WindowPane'
+import { Icon, type IconName } from '../ui/Icon'
 
 // 左侧：标签页 + 拖放打开文件
 
-const ICON: Record<Doc['kind'], string> = { md: '📄', pdf: '📕', terminal: '⌨️', window: '🪟' }
+const ICON: Record<Doc['kind'], IconName> = { md: 'doc', pdf: 'book', terminal: 'terminal', window: 'window' }
 
 function Pane({ doc, active }: { doc: Doc; active: boolean }): React.JSX.Element {
   switch (doc.kind) {
@@ -26,7 +27,7 @@ function Pane({ doc, active }: { doc: Doc; active: boolean }): React.JSX.Element
 export function LeftPane(): React.JSX.Element {
   const { docs, active } = useStore(docsStore)
   const [drag, setDrag] = useState(false)
-  const [menu, setMenu] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
   return (
     <section
@@ -47,7 +48,9 @@ export function LeftPane(): React.JSX.Element {
       <div className="tabs">
         {docs.map((d) => (
           <div key={d.id} className={`tab ${d.id === active ? 'on' : ''}`} onClick={() => activate(d.id)} title={d.path || d.title}>
-            <span className="tab-icon">{ICON[d.kind]}</span>
+            <span className="tab-icon">
+              <Icon name={ICON[d.kind]} />
+            </span>
             <span className="tab-title">{d.title}</span>
             {d.id !== 'welcome' && d.id !== 'window' && (
               <button
@@ -63,14 +66,21 @@ export function LeftPane(): React.JSX.Element {
           </div>
         ))}
         <div className="tab-add">
-          <button className="btn sm ghost" onClick={() => setMenu((m) => !m)}>
+          <button
+            className="btn sm ghost"
+            onClick={(e) => {
+              // 标签栏是横向滚动容器，菜单用 fixed 定位才不会被裁掉
+              const r = e.currentTarget.getBoundingClientRect()
+              setMenu((m) => (m ? null : { x: r.left, y: r.bottom }))
+            }}
+          >
             ＋
           </button>
           {menu && (
-            <div className="menu" onMouseLeave={() => setMenu(false)}>
+            <div className="menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
               <button
                 onClick={() => {
-                  setMenu(false)
+                  setMenu(null)
                   openViaDialog()
                 }}
               >
@@ -78,7 +88,7 @@ export function LeftPane(): React.JSX.Element {
               </button>
               <button
                 onClick={() => {
-                  setMenu(false)
+                  setMenu(null)
                   newTerminal()
                 }}
               >

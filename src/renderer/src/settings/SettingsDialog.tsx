@@ -3,6 +3,7 @@ import type { Provider, Settings, ModelRef } from '../../../shared/types'
 import { useStore, uid } from '../store'
 import { settingsStore, updateSettings, uiStore, la, toast } from '../appState'
 import { gaze } from '../gaze/engine'
+import { avatarStore, clearAvatar } from '../avatar/avatar'
 
 // 设置：模型服务商（OpenAI 兼容 / Anthropic）增删改、三路模型分配、Jev 网关、眼动参数
 
@@ -114,6 +115,7 @@ export function SettingsDialog(): React.JSX.Element | null {
   const ui = useStore(uiStore)
   const cur = useStore(settingsStore).s
   const g = useStore(gaze.status)
+  const av = useStore(avatarStore)
   const [draft, setDraft] = useState<Settings | null>(null)
   const [tab, setTab] = useState<Tab>('providers')
   const [presets, setPresets] = useState<Array<{ name: string; baseUrl: string; model: string }>>([])
@@ -266,7 +268,7 @@ export function SettingsDialog(): React.JSX.Element | null {
               </div>
               <label className="check">
                 <input type="checkbox" checked={draft.jevMode} onChange={(e) => set({ jevMode: e.target.checked })} />
-                开启 Jev 模式（右手柄 + 键也能切）
+                开启 Jev 模式（长按右手柄 + 也能切）
               </label>
               <p className="dim small">Jev 只判断不写字：段落难度、是否卡住、提问意图、Qwen Code 是否在等你批准。同样的内容命中本地缓存不重复花钱。</p>
             </div>
@@ -307,6 +309,22 @@ export function SettingsDialog(): React.JSX.Element | null {
                   onChange={(e) => set({ gaze: { ...draft.gaze, smoothing: Number(e.target.value) } })}
                 />
               </label>
+              <label>
+                吸附强度：{Math.round((draft.gaze.magnet ?? 0.7) * 100)}%（越高，视线圈越容易吸住附近的词、吸得越牢，软焦点也越不容易跳段；40% 左右是最早的手感）
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={draft.gaze.magnet ?? 0.7}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    set({ gaze: { ...draft.gaze, magnet: v } })
+                    // 边拖边生效，关掉设置前就能试手感
+                    updateSettings((x) => ({ ...x, gaze: { ...x.gaze, magnet: v } }))
+                  }}
+                />
+              </label>
               <label className="check">
                 <input type="checkbox" checked={draft.gaze.showCursor} onChange={(e) => set({ gaze: { ...draft.gaze, showCursor: e.target.checked } })} />
                 显示视线圈
@@ -333,6 +351,60 @@ export function SettingsDialog(): React.JSX.Element | null {
                   删除校准模型
                 </button>
               </div>
+
+              <h3 className="settings-sub">实时小人</h3>
+              <label className="check">
+                <input type="checkbox" checked={draft.avatar.show} onChange={(e) => set({ avatar: { ...draft.avatar, show: e.target.checked } })} />
+                在角落显示实时小人（跟着你的头动，坐偏了告诉你往哪挪）
+              </label>
+              <label>
+                图生图服务（OpenAI 兼容的 images/edits）
+                <select value={draft.avatar.providerId} onChange={(e) => set({ avatar: { ...draft.avatar, providerId: e.target.value } })}>
+                  {draft.providers
+                    .filter((p) => p.kind === 'openai')
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.apiKey ? '' : '（缺 Key）'}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className="row">
+                <label className="grow">
+                  模型
+                  <input value={draft.avatar.model} onChange={(e) => set({ avatar: { ...draft.avatar, model: e.target.value.trim() } })} />
+                </label>
+                <label>
+                  画质
+                  <select
+                    value={draft.avatar.quality}
+                    onChange={(e) => set({ avatar: { ...draft.avatar, quality: e.target.value as Settings['avatar']['quality'] } })}
+                  >
+                    <option value="low">低（快、便宜）</option>
+                    <option value="medium">中</option>
+                    <option value="high">高（慢）</option>
+                  </select>
+                </label>
+              </div>
+              <div className="row">
+                <button
+                  className="btn sm"
+                  disabled={av.busy}
+                  onClick={async () => {
+                    await updateSettings(() => draft)
+                    uiStore.patch({ showSettings: false, showBooth: true })
+                  }}
+                >
+                  {av.busy ? '小人生成中…' : av.img ? '重新拍照生成' : '拍大头照生成小人'}
+                </button>
+                {av.img && (
+                  <button className="btn sm ghost" onClick={() => clearAvatar()}>
+                    删掉小人（换回默认形象）
+                  </button>
+                )}
+              </div>
+              <p className="dim small">照片只发给上面选的图生图服务，不存本地；生成的小人存在本机。默认用 OpenLux 中转的 gpt-image-2，一次约 40～60 秒。</p>
             </div>
           )}
 
