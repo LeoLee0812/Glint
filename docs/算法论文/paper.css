@@ -1,0 +1,23 @@
+/* 论文排版：沿用 LookAsk 产品的 iOS 纯白风格——系统蓝、发丝线、苹方 */
+@page { size: A4; margin: 22mm 20mm 22mm 20mm; }
+:root { --fg:#1d1d1f; --fg2:rgba(60,60,67,.72); --blue:#007aff; --cyan:#32ade6; --sep:rgba(60,60,67,.18); --grouped:#f2f2f7; }
+body { font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif; color: var(--fg); font-size: 10.5pt; line-height: 1.75; background:#fff; margin:0; }
+main { max-width: 100%; }
+h1 { font-size: 21pt; line-height: 1.35; margin: 0 0 4pt; letter-spacing: -.01em; }
+h1 + h2 { font-size: 13pt; color: var(--blue); border: none; margin-top: 0; font-weight: 600; }
+h2 { font-size: 15pt; margin: 26pt 0 10pt; padding-bottom: 5pt; border-bottom: 1.5px solid var(--blue); break-after: avoid; }
+h3 { font-size: 12.5pt; margin: 18pt 0 6pt; break-after: avoid; }
+h4 { font-size: 11pt; margin: 14pt 0 4pt; color: #0062cc; break-after: avoid; }
+p, li { text-align: justify; }
+strong { color: #000; }
+code { font-family: 'SF Mono', Menlo, monospace; font-size: 9pt; background: var(--grouped); padding: 1px 4px; border-radius: 4px; }
+pre { background: var(--grouped); border-radius: 10px; padding: 10pt 12pt; font-size: 8.6pt; line-height: 1.5; overflow: hidden; break-inside: avoid; }
+pre code { background: none; padding: 0; }
+blockquote { margin: 10pt 0; padding: 6pt 12pt; border-left: 3px solid var(--cyan); background: rgba(50,173,230,.07); border-radius: 0 8px 8px 0; color: var(--fg2); }
+blockquote p { margin: 4pt 0; text-align: left; }
+table { border-collapse: collapse; width: 100%; margin: 10pt 0; font-size: 9.4pt; break-inside: avoid; }
+th { background: var(--grouped); font-weight: 600; text-align: left; }
+th, td { border-bottom: .6px solid var(--sep); padding: 5pt 7pt; vertical-align: top; }
+hr { border: none; border-top: .6px solid var(--sep); margin: 18pt 0; }
+.katex-display { margin: 10pt 0; overflow: hidden; }
+.katex { font-size: 1.05em; }
