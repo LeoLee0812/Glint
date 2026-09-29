@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
-import { la } from '../appState'
+import { la, settingsStore, toast, uiStore } from '../appState'
 import { panes } from '../focus/focus'
 import { createTerminalAdapter } from '../focus/terminalAdapter'
 import { judgeTerminal } from '../jev/jevBrain'
+import { AGENT } from './agent'
 import type { Doc } from './docs'
 
-// 终端视图：node-pty 起登录 shell，直接跑 agent；手柄十字键 = 方向键 / 回车 / Esc，ZL 语音直接打字进来
+// 终端视图：node-pty 起登录 shell，一键启动 Qwen Code（命令 qwen，百炼 Key 由主进程带进环境变量）；
+// 手柄十字键 = 方向键 / 回车 / Esc，ZL 语音直接打字进来
 
 export interface TermHandle {
   term: Terminal
@@ -53,7 +55,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
       scrollback: 8000,
       allowProposedApi: true,
       macOptionIsMeta: false,
-      // 白底终端：Qwen Code 默认是深色主题，靠最低对比度自动把浅色字压深，不会糊成一片
+      // 白底终端：Qwen Code 这类终端界面默认按深色背景配色，靠最低对比度自动把浅色字压深，不会糊成一片
       minimumContrastRatio: 4.5,
       theme: {
         background: '#ffffff',
@@ -106,7 +108,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
           term.write(p.data)
           // 输出停下来 1.5 秒后，让 Jev 看一眼 Qwen Code 是不是在等你拍板
           if (settleTimer) clearTimeout(settleTimer)
-          settleTimer = setTimeout(() => judgeTerminal(screenOf(term)), 1500)
+          settleTimer = setTimeout(() => judgeTerminal(() => screenOf(term)), 1500)
         })
       )
       offs.push(
@@ -157,10 +159,32 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
     termRef.current?.focus()
   }
 
+  // 启动 Qwen Code；没装的话 shell 会报 command not found，就地用 npm 装上再启动
+  const startAgent = () => {
+    run(`${AGENT.cmd}\r`)
+    if (!settingsStore.get().s?.providers.find((p) => p.id === 'qwen')?.apiKey) {
+      toast('设置里还没填百炼 Key，Qwen Code 会先让你选登录方式；填好后新开一个终端就自动带上', 'warn', {
+        ttl: 8000,
+        action: { label: '去填 Key', run: () => uiStore.patch({ showSettings: true }) }
+      })
+    }
+    let installing = false
+    const check = () => {
+      const t = termRef.current
+      if (installing || !t || !/command not found: qwen|qwen: command not found/.test(screenOf(t).split('\n').slice(-4).join('\n'))) return
+      installing = true
+      run(`${AGENT.install}\r`)
+      toast('还没装 Qwen Code，正在用 npm 装（半分钟左右），装好自动启动', 'info', { ttl: 8000 })
+    }
+    // shell 刚起来时 .zshrc 可能还没跑完，看两次
+    setTimeout(check, 1500)
+    setTimeout(check, 4000)
+  }
+
   return (
     <div className="term-pane">
       <div className="pane-toolbar">
-        <button className="btn sm primary" onClick={() => run('agent\r')}>
+        <button className="btn sm primary" onClick={startAgent}>
           启动 Qwen Code
         </button>
         <button className="btn sm" onClick={() => run('clear\r')}>

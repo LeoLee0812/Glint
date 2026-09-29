@@ -5,6 +5,8 @@ import { gaze } from './gaze/engine'
 import { chatStore, ask, popFork, closeFork } from './chat/chatStore'
 import { docsStore, openDoc } from './panes/docs'
 import { input } from './input/joycon'
+import * as haptics from './input/haptics'
+import * as wrist from './input/wrist'
 import * as jevBrain from './jev/jevBrain'
 import { jevStore } from './jev/jevBrain'
 import { uiStore, settingsStore, toastStore, boundsStore, updateSettings, clientToScreen } from './appState'
@@ -25,6 +27,8 @@ if (import.meta.env.DEV) {
     docsStore,
     openDoc,
     input,
+    haptics,
+    wrist,
     jevStore,
     uiStore,
     settingsStore,

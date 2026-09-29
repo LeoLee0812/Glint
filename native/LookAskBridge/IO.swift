@@ -19,6 +19,9 @@ func logMsg(_ msg: String) {
     emit(["t": "log", "msg": msg])
 }
 
+/// 父进程退出、stdin 关闭时，退出前要做的收尾（比如关手柄的灯）
+var beforeExit: (() -> Void)?
+
 /// 后台线程逐行读 stdin，解析后切回主线程交给 handler
 func startCommandReader(_ handler: @escaping ([String: Any]) -> Void) {
     let thread = Thread {
@@ -29,7 +32,10 @@ func startCommandReader(_ handler: @escaping ([String: Any]) -> Void) {
             DispatchQueue.main.async { handler(obj) }
         }
         // stdin 关闭说明父进程已退出，助手跟着退出，避免残留孤儿进程
-        DispatchQueue.main.async { exit(0) }
+        DispatchQueue.main.async {
+            beforeExit?()
+            exit(0)
+        }
     }
     thread.start()
 }

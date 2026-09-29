@@ -5,6 +5,8 @@ import App from './App'
 import './input/router'
 // ⌥ + 点击 = 漂移校正
 import './input/clickCalibrate'
+// 菜单栏图标：推状态、收命令
+import './tray'
 import './debug'
 
 // 不用 StrictMode：开发模式下它会把副作用跑两遍，终端会被重复创建

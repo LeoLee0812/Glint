@@ -269,11 +269,16 @@ export class DomAdapter implements PaneAdapter {
     const b = this.o.blocks.blockOf(da.node)
     if (!b) return null
     const nb = this.o.blocks.neighbor(b, dir === 'down' ? 1 : -1)
-    const t = nb?.textNodes()[0]
+    return nb ? this.enter(nb) : null
+  }
+
+  /** 跳进某一块：锚点落在它第一个词上，块在可视区外就先滚过去 */
+  enter(nb: Block): Anchor | null {
+    const t = nb.textNodes()[0]
     if (!t) return null
     const first = segmentsOf(t).find((s) => s.word)
     const na: DomAnchor = { pane: this.id, node: t, offset: first?.start ?? 0 }
-    const rr = nb!.rects()[0]
+    const rr = nb.rects()[0]
     const root = this.o.root()
     if (rr && root) {
       const view = root.getBoundingClientRect()
@@ -282,6 +287,12 @@ export class DomAdapter implements PaneAdapter {
       }
     }
     return na
+  }
+
+  /** 锚点所在的块（给外层组合适配器排跨页的阅读顺序） */
+  blockAt(a: Anchor): Block | null {
+    const da = a as DomAnchor
+    return da.node?.isConnected ? this.o.blocks.blockOf(da.node) : null
   }
 
   /** 块内文字到文本节点的映射，给「句」粒度用 */

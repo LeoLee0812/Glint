@@ -1,5 +1,6 @@
 import type { GazeSourceKind } from '../../../shared/types'
 import type { FaceExpr, HeadPos } from './pose'
+import type { Head3D } from './headmotion'
 
 // 眼动引擎对外的数据结构（引擎、输入源、界面共用）
 
@@ -12,6 +13,8 @@ export interface GazeFrame {
   faceBox: { x: number; y: number; w: number; h: number } | null
   /** 这一帧的头位置和转角（未平滑） */
   pose: HeadPos | null
+  /** 摄像头：头的三维位置和朝向（头动补偿用） */
+  head3d?: Head3D | null
 }
 
 export interface GazeSample {
@@ -58,6 +61,8 @@ export interface GazeStatus {
   /** 当前输入源 */
   source: GazeSourceKind
   link: TdLink | null
+  /** 摄像头的头动补偿正在起作用（头挪开、转头会自动修正，不用坐回原位） */
+  headComp: boolean
 }
 
 /** 输入源交给引擎的一帧 */

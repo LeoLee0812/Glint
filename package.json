@@ -1,5 +1,5 @@
 {
-  "name": "lookask",
+  "name": "glint",
   "productName": "Glint",
   "version": "0.1.0",
   "description": "Glint 瞳问：眼动追踪 + Joy-Con 的 AI 阅读副驾，所见即所问",
@@ -13,6 +13,7 @@
     "build:native": "bash native/build.sh",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist": "bash native/build.sh && electron-vite build && electron-builder --mac dmg --arm64",
+    "reinstall": "bash scripts/reinstall.sh",
     "test:truedepth": "node scripts/test-truedepth.mjs",
     "fake-iphone": "node scripts/fake-truedepth.mjs",
     "postinstall": "install-electron && node scripts/fetch-assets.mjs && electron-builder install-app-deps"
@@ -30,6 +31,7 @@
     "@vscode/markdown-it-katex": "^1.1.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "delaunator": "^5.1.0",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",

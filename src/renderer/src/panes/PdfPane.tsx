@@ -7,9 +7,13 @@ import { panes, focus } from '../focus/focus'
 import { toBox, unionBox, type Box } from '../focus/types'
 import { la, toast } from '../appState'
 import type { Doc } from './docs'
+import type { VBox, VisualBlock, VisualLayout } from './pdfLayout'
+import { layoutCanvas, PdfFocusAdapter, PdfVisual } from './pdfVisual'
 
 // PDF 论文视图：pdf.js 画页面 + 透明文字层；文字层渲染完做一次版面分析，
-// 把碎片 span 合成「行 → 段」，处理双栏、标题识别，段落焦点和「总结这一节」都靠它
+// 把碎片 span 合成「行 → 段」，处理双栏、标题识别，段落焦点和「总结这一节」都靠它。
+// 扫描件（页面只是一张图，文字层几乎没字）改看像素：pdfLayout 按墨迹切出段 / 图表 / 公式块（pdfVisual.ts），
+// 视线照样能选，提问时把那一块高清截出来交给看图模型
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 const ASSET = new URL('./pdfjs/', window.location.href).href
@@ -25,6 +29,31 @@ interface PdfBlockData {
 }
 
 const CJK = /[　-鿿＀-￯]/
+const WORDCH = /[\p{L}\p{N}]/gu
+const BAD = /[\uE000-\uF8FF\uFFFD]/g
+
+/** 一页文字层里有效字（字母、数字、汉字）少于这个数，就当扫描页，按版面切块 */
+const SCAN_CHARS = 300
+
+/** 字体没带 Unicode 映射时，文字层是一串私有区码位 / 替换符：这种字当没有 */
+function garbled(text: string): boolean {
+  const t = text.replace(/\s/g, '')
+  return !!t && (t.match(BAD)?.length ?? 0) >= t.length * 0.5
+}
+
+/** 扫描块里被文字层盖住三成以上的不要（那里有真文字，走文字层）；没盖住的是扫描进来的内容 */
+function uncovered(blocks: VisualBlock[], boxes: VBox[]): VisualBlock[] {
+  if (!boxes.length) return blocks
+  return blocks.filter((b) => {
+    let cov = 0
+    for (const t of boxes) {
+      const ix = Math.min(b.x + b.w, t.x + t.w) - Math.max(b.x, t.x)
+      const iy = Math.min(b.y + b.h, t.y + t.h) - Math.max(b.y, t.y)
+      if (ix > 0 && iy > 0) cov += ix * iy
+    }
+    return cov < b.w * b.h * 0.3
+  })
+}
 
 function joinText(a: string, b: string): string {
   if (!a) return b
@@ -57,8 +86,11 @@ class PdfBlocks implements BlockProvider {
     this.order = []
   }
 
-  /** 单页版面分析：文字碎片 → 行 → 段；先判断这一页是单栏还是双栏 */
-  analyzePage(page: number, pageDiv: HTMLElement, divs: HTMLElement[]): void {
+  /**
+   * 单页版面分析：文字碎片 → 行 → 段；先判断这一页是单栏还是双栏。
+   * 返回这页文字层有多少有效字、各碎片在页面上的位置（归一化），给「是不是扫描页」判断用
+   */
+  analyzePage(page: number, pageDiv: HTMLElement, divs: HTMLElement[]): { chars: number; boxes: VBox[] } {
     // 先清掉这一页旧的块（缩放后重画）
     for (const [k, b] of this.blocks) if (b.page === page) this.blocks.delete(k)
 
@@ -66,9 +98,15 @@ class PdfBlocks implements BlockProvider {
     const W = pr.width
     type It = { el: HTMLElement; x: number; y: number; w: number; h: number; fh: number; text: string }
     const items: It[] = []
+    let chars = 0
+    const boxes: VBox[] = []
     for (const el of divs) {
       const text = el.textContent || ''
       if (!text.trim()) continue
+      if (garbled(text)) {
+        el.classList.add('focus-skip')
+        continue
+      }
       // 旋转的文字（比如 arXiv 侧边竖排编号）不参与分段
       const rot = el.style.getPropertyValue('--rotate')
       if (rot && parseFloat(rot) !== 0) continue
@@ -76,10 +114,12 @@ class PdfBlocks implements BlockProvider {
       if (r.width < 0.5 || r.height < 0.5) continue
       const fh = parseFloat(el.style.getPropertyValue('--font-height')) || r.height
       items.push({ el, x: r.left - pr.left, y: r.top - pr.top, w: r.width, h: r.height, fh, text })
+      chars += text.match(WORDCH)?.length ?? 0
+      if (pr.width && pr.height) boxes.push({ x: (r.left - pr.left) / pr.width, y: (r.top - pr.top) / pr.height, w: r.width / pr.width, h: r.height / pr.height })
     }
     if (!items.length) {
       this.rebuildOrder()
-      return
+      return { chars, boxes }
     }
     items.sort((a, b) => a.y - b.y || a.x - b.x)
 
@@ -187,6 +227,16 @@ class PdfBlocks implements BlockProvider {
       cands.sort((a, b) => b.fh - a.fh)
       this.title = cands[0]?.text || ''
     }
+    return { chars, boxes }
+  }
+
+  /** 第 n 页的文字块，按阅读顺序 */
+  onPage(page: number): Block[] {
+    return this.order.map((k) => this.blocks.get(k)!).filter((d) => d.page === page).map((d) => this.wrap(d))
+  }
+
+  pageOf(b: Block): number {
+    return this.blocks.get(b.key)?.page ?? 0
   }
 
   private rebuildOrder(): void {
@@ -249,6 +299,46 @@ interface PageSize {
   h: number
 }
 
+/**
+ * 从 PDF 里把第 n 页的一块按高分辨率单独渲染出来（和当前缩放无关，长边约 1400 像素，公式、小字看得清）；
+ * mark = 在图上用蓝框标出焦点那一行
+ */
+async function cropPage(pdf: PDFDocumentProxy | null, num: number, box: VBox, mark?: VBox): Promise<string | null> {
+  if (!pdf) return null
+  try {
+    const pg = await pdf.getPage(num)
+    const base = pg.getViewport({ scale: 1 })
+    const x0 = Math.max(0, box.x - 0.01)
+    const y0 = Math.max(0, box.y - 0.006)
+    const x1 = Math.min(1, box.x + box.w + 0.01)
+    const y1 = Math.min(1, box.y + box.h + 0.006)
+    const long = Math.max((x1 - x0) * base.width, (y1 - y0) * base.height)
+    const vp = pg.getViewport({ scale: Math.min(4, Math.max(1.5, 1400 / long)) })
+    const cv = document.createElement('canvas')
+    cv.width = Math.max(8, Math.round((x1 - x0) * vp.width))
+    cv.height = Math.max(8, Math.round((y1 - y0) * vp.height))
+    await pg.render({ canvas: cv, viewport: vp, transform: [1, 0, 0, 1, -x0 * vp.width, -y0 * vp.height] }).promise
+    if (mark) {
+      const g = cv.getContext('2d')!
+      const pad = 4
+      const mx = (mark.x - x0) * vp.width - pad
+      const my = (mark.y - y0) * vp.height - pad
+      const mw = mark.w * vp.width + pad * 2
+      const mh = mark.h * vp.height + pad * 2
+      g.lineWidth = 7
+      g.strokeStyle = 'rgba(255, 255, 255, 0.92)'
+      g.strokeRect(mx, my, mw, mh)
+      g.lineWidth = 3.5
+      g.strokeStyle = 'rgb(0, 122, 255)'
+      g.strokeRect(mx, my, mw, mh)
+    }
+    return cv.toDataURL('image/jpeg', 0.9)
+  } catch (e) {
+    console.warn('[pdf] 截取扫描块失败', num, e)
+    return null
+  }
+}
+
 export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
@@ -260,6 +350,21 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
   const blocksRef = useRef(new PdfBlocks())
   const renderedRef = useRef(new Map<number, number>())
   const renderingRef = useRef(new Set<number>())
+  // 扫描页：每页的切块结果（归一化坐标，和缩放无关，切一次就缓存）
+  const [scanPages, setScanPages] = useState(0)
+  const pdfRef = useRef<PDFDocumentProxy | null>(null)
+  const layoutsRef = useRef(new Map<number, VisualLayout>())
+  const toldRef = useRef(false)
+  const visualRef = useRef<PdfVisual | null>(null)
+  if (!visualRef.current) {
+    visualRef.current = new PdfVisual({
+      paneId: `doc:${doc.id}`,
+      root: () => scrollRef.current,
+      pageEl: (n) => scrollRef.current?.querySelector<HTMLElement>(`.pdf-page[data-page="${n}"]`) ?? null,
+      crop: (n, box, mark) => cropPage(pdfRef.current, n, box, mark),
+      docTitle: () => blocksRef.current.title || doc.title
+    })
+  }
 
   // 载入
   useEffect(() => {
@@ -284,6 +389,10 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
         }
         if (cancelled) return
         blocksRef.current.clear()
+        visualRef.current!.clear()
+        layoutsRef.current.clear()
+        setScanPages(0)
+        pdfRef.current = p
         setSizes(list)
         setPdf(p)
       })
@@ -308,6 +417,30 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
 
   const scaleOf = useCallback((s: PageSize) => ((Math.max(320, width - 48) / s.w) * zoom), [width, zoom])
 
+  /** 文字层几乎没字的页：交给 worker 按版面切块（有缓存），去掉被真文字盖住的块，登记成扫描块 */
+  const scanPage = useCallback(async (num: number, canvas: HTMLCanvasElement, boxes: VBox[]) => {
+    const vis = visualRef.current!
+    let lay = layoutsRef.current.get(num)
+    if (!lay) {
+      const t0 = performance.now()
+      const got = await layoutCanvas(canvas)
+      if (!got) return
+      lay = got
+      layoutsRef.current.set(num, lay)
+      if (import.meta.env.DEV) {
+        console.log(`[pdf] 第 ${num} 页按版面切块：${lay.blocks.length} 块、${lay.columns} 栏、扫歪 ${lay.skew.toFixed(2)}°，${Math.round(performance.now() - t0)}ms`)
+      }
+    }
+    const kept = uncovered(lay.blocks, boxes)
+    vis.set(num, lay, kept)
+    setScanPages(vis.size)
+    if (kept.length && !toldRef.current) {
+      toldRef.current = true
+      toast('这份 PDF 是扫描件，没有文字层：已按版面切成段落、图表、公式块，视线照样能选；按 A / X / Y 会把盯着的那一块截图交给看图模型', 'info', { ttl: 7000 })
+    }
+    focus.refresh()
+  }, [])
+
   const renderPage = useCallback(
     async (num: number) => {
       if (!pdf) return
@@ -331,16 +464,21 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
         tl.replaceChildren()
         const layer = new pdfjs.TextLayer({ textContentSource: pg.streamTextContent(), container: tl, viewport })
         await layer.render()
-        blocksRef.current.analyzePage(num, pageDiv, layer.textDivs as HTMLElement[])
+        const stats = blocksRef.current.analyzePage(num, pageDiv, layer.textDivs as HTMLElement[])
         renderedRef.current.set(num, scale)
         focus.refresh()
+        if (stats.chars < SCAN_CHARS) void scanPage(num, canvas, stats.boxes)
+        else if (visualRef.current!.has(num)) {
+          visualRef.current!.drop(num)
+          setScanPages(visualRef.current!.size)
+        }
       } catch (e) {
         console.warn('[pdf] 渲染失败', num, e)
       } finally {
         renderingRef.current.delete(num)
       }
     },
-    [pdf, sizes, scaleOf]
+    [pdf, sizes, scaleOf, scanPage]
   )
 
   // 只渲染可视区附近的页
@@ -390,10 +528,11 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
     [page, sizes.length]
   )
 
-  // 焦点适配器
+  // 焦点适配器：文字层交给 DomAdapter，扫描页交给 PdfVisual，外面包一层按锚点分派
+  const pageCount = sizes.length
   useEffect(() => {
     if (!active) return
-    const adapter = new DomAdapter({
+    const dom = new DomAdapter({
       id: `doc:${doc.id}`,
       kind: 'pdf',
       root: () => scrollRef.current,
@@ -423,8 +562,8 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
         return out.toDataURL('image/png')
       }
     })
-    return panes.register(adapter)
-  }, [active, doc.id, doc.title, goPage])
+    return panes.register(new PdfFocusAdapter(dom, visualRef.current!, blocksRef.current, () => pageCount))
+  }, [active, doc.id, doc.title, goPage, pageCount])
 
   // 键盘翻页（焦点不在输入框时）
   useEffect(() => {
@@ -463,6 +602,11 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
         <button className="btn sm" onClick={() => setZoom((z) => Math.min(3, z + 0.15))}>
           ＋
         </button>
+        {scanPages > 0 && (
+          <span className="scan-tag" title="这份 PDF 的页面只是图片、没有文字层：按版面切成段落 / 图表 / 公式块给视线选，提问时截图交给看图模型">
+            扫描件 · 按版面分块
+          </span>
+        )}
         <span className="dim small ellipsis">{blocksRef.current.title || doc.title}</span>
       </div>
       <div className="doc-scroll pdf-scroll" ref={scrollRef}>

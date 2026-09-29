@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { gaze } from '../gaze/engine'
-import { uiStore, settingsStore, toast } from '../appState'
+import { uiStore, settingsStore, toast, rumble } from '../appState'
 import { input } from '../input/joycon'
 import { avatarStore, takeHeadshot, generateAvatar } from '../avatar/avatar'
+import { finishOnboarding } from '../onboarding'
 import { Icon } from './Icon'
 
 // 拍大头照 → 生成实时小人：摄像头预览（镜像）+ 倒数 3 秒拍照 + 确认后交给图生图
+// 装好后第一次打开时这就是引导的第一步；快门是左摇杆按下（整个 App 只有这里用它），拍下那一刻手柄重震一下
 // 画的时候可以先关掉窗口，画好了角落里的小人会自己换上
 
 const PREVIEW_W = 480
@@ -44,7 +46,14 @@ function BoothInner(): React.JSX.Element {
   const camReady = borrowed ? camUp : st.state === 'running'
   const camNote = borrowed ? '摄像头启动中…（拍照临时借用 Mac 摄像头）' : st.state === 'loading' ? '摄像头启动中…' : st.error || '摄像头没开'
 
-  const close = () => uiStore.patch({ showBooth: false })
+  const close = () => {
+    uiStore.patch({ showBooth: false })
+    finishOnboarding()
+  }
+  const firstRun = s?.onboarded === false
+  const provider = s?.providers.find((p) => p.id === s.avatar.providerId)
+  const noKey = !provider?.apiKey
+  const fillKey = () => uiStore.patch({ showSettings: true, settingsTab: 'providers' })
 
   useEffect(() => {
     // 输入源是 iPhone 原深感时，临时借用摄像头拍照，关窗口就还回去
@@ -102,10 +111,12 @@ function BoothInner(): React.JSX.Element {
     setStep('count')
     let n = 3
     setCount(n)
+    rumble('tick', 'L')
     const id = setInterval(() => {
       n--
       if (n > 0) {
         setCount(n)
+        rumble('tick', 'L')
         return
       }
       clearInterval(id)
@@ -115,6 +126,7 @@ function BoothInner(): React.JSX.Element {
         setStep('live')
         return
       }
+      rumble('strong')
       setFlash(true)
       setTimeout(() => setFlash(false), 260)
       setPhoto(p)
@@ -135,12 +147,19 @@ function BoothInner(): React.JSX.Element {
     setStep('live')
   }
 
-  // 手柄 / 键盘：A 确认，B 退一步
+  // 手柄 / 键盘：左摇杆按下（⌥A）= 快门，A 确认，B 退一步；设置叠在上面填 Key 时不抢按键
+  useEffect(() => {
+    return input.onButton((e) => {
+      if (e.down && e.btn === 'LS' && !uiStore.get().showSettings) shoot()
+    })
+  })
   useEffect(() => {
     return input.onAction((a) => {
+      if (uiStore.get().showSettings) return
       if (a === 'confirm') {
         if (made) close()
         else if (step === 'live') shoot()
+        else if (step === 'shot' && !av.busy && noKey) fillKey()
         else if (step === 'shot' && !av.busy) make()
       } else if (a === 'cancel') {
         if (av.busy || step === 'live') close()
@@ -150,14 +169,13 @@ function BoothInner(): React.JSX.Element {
   })
 
   const genSec = av.busy ? Math.round((Date.now() - av.since) / 1000) : 0
-  const provider = s?.providers.find((p) => p.id === s.avatar.providerId)
 
   return (
     <div className="modal-mask" onClick={close}>
       <div className="modal booth" onClick={(e) => e.stopPropagation()}>
         <h2>
           <Icon name="person" />
-          拍张大头照，生成你的实时小人
+          {firstRun ? '第一步：拍张大头照，生成你的实时小人' : '拍张大头照，生成你的实时小人'}
         </h2>
         <p className="dim small">
           小人会一直待在屏幕角落，跟着你的头实时动；坐偏了、离远了它会告诉你往哪挪。照片只发给图生图服务
@@ -183,14 +201,15 @@ function BoothInner(): React.JSX.Element {
               </div>
               <figure className={`booth-avatar ${av.busy ? 'busy' : ''}`}>
                 {made && av.img ? <img src={av.img} alt="小人" /> : <div className="booth-wait">{av.busy ? `${genSec}s` : '？'}</div>}
-                <figcaption>{made ? '你的小人' : av.busy ? '正在画…（一般 40～60 秒）' : '小人'}</figcaption>
+                <figcaption>{made ? '你的小人' : av.busy ? '正在画…（一般半分钟）' : '小人'}</figcaption>
               </figure>
             </div>
           )}
           {flash && <div className="booth-flash" />}
         </div>
 
-        {av.error && step === 'shot' && !av.busy && !made && <p className="err small">没画出来：{av.error}</p>}
+        {av.error && step === 'shot' && !av.busy && !made && !noKey && <p className="err small">没画出来：{av.error}</p>}
+        {step === 'shot' && !av.busy && !made && noKey && <p className="err small">还没填千问的 API Key，填好才能画小人（照片先留着）</p>}
 
         <div className="booth-actions">
           {made ? (
@@ -209,9 +228,15 @@ function BoothInner(): React.JSX.Element {
               </button>
             ) : (
               <>
-                <button className="btn primary" onClick={make}>
-                  {av.error ? '再试一次（A）' : '生成小人（A）'}
-                </button>
+                {noKey ? (
+                  <button className="btn primary" onClick={fillKey}>
+                    去填 Key（A）
+                  </button>
+                ) : (
+                  <button className="btn primary" onClick={make}>
+                    {av.error ? '再试一次（A）' : '生成小人（A）'}
+                  </button>
+                )}
                 <button className="btn" onClick={retake}>
                   重拍（B）
                 </button>
@@ -220,7 +245,7 @@ function BoothInner(): React.JSX.Element {
           ) : (
             <>
               <button className="btn primary" onClick={shoot} disabled={step !== 'live' || !camReady || av.busy}>
-                {av.busy ? '上一个小人还在画…' : '拍照（A）· 倒数 3 秒'}
+                {av.busy ? '上一个小人还在画…' : '拍照（按左摇杆）· 倒数 3 秒'}
               </button>
               <button className="btn" onClick={close}>
                 取消（B）

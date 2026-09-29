@@ -20,6 +20,10 @@ export interface Selection {
   gran: Granularity
   /** 所在块的稳定标识，给 Jev 统计停留和回看 */
   blockKey?: string
+  /** 显示用的粒度名，覆盖「词 / 句 / 段 / 节」（扫描页按版面切出来的是 行 / 段 / 图表 / 公式 / 栏） */
+  unit?: string
+  /** 扫描页上按版面切出来的块：text 只是给人看的位置说明，不是原文 */
+  visual?: boolean
 }
 
 export type SourceKind = 'markdown' | 'pdf' | 'terminal' | 'chat'
@@ -45,6 +49,11 @@ export interface FocusContext {
   region?: string
   /** 整张截图上有没有画蓝圈标出视线位置 */
   circle?: boolean
+  /**
+   * 扫描页（没有文字层）：焦点只有截图，没有原文。unit = 行 / 段 / 图表 / 公式 / 栏 / 页；
+   * marked = 截的是整段、焦点那一行用蓝框标出；label = 给人看的位置（第 3 页 · 左栏 · 第 2 段）
+   */
+  scan?: { unit: string; marked?: boolean; label?: string }
 }
 
 export type Anchor = { pane: string } & Record<string, any>
@@ -66,6 +75,8 @@ export interface PaneAdapter {
   page?(delta: number): void
   /** 截取焦点区域的画面（客户端坐标矩形），返回 dataURL */
   capture?(rect: Box): Promise<string | null>
+  /** 这个锚点支持哪几档粒度（R 键循环时跳过不支持的）；不实现 = 全都支持 */
+  grans?(a: Anchor): Granularity[]
 }
 
 export function unionBox(rects: Box[]): Box | null {

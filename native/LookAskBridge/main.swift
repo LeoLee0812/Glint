@@ -18,6 +18,8 @@ if CommandLine.arguments.contains("--probe") {
 }
 
 if !noJoy { joycons.start() }
+// 父进程退出（stdin 关了）时也要收尾：停震动、关 HOME 灯
+beforeExit = { joycons.shutdown() }
 
 startCommandReader { cmd in
     guard let name = cmd["cmd"] as? String else { return }
@@ -35,8 +37,23 @@ startCommandReader { cmd in
             low: cmd["low"] as? Double ?? 160,
             high: cmd["high"] as? Double ?? 320
         )
+    case "rumble_seq":
+        // 分段震动：seq = [[毫秒, 低频, 高频, 振幅, 结束低频?, 结束高频?, 结束振幅?], ...]
+        joycons.play(
+            side: cmd["side"] as? String,
+            segs: cmd["seq"] as? [[Double]] ?? [],
+            prio: cmd["prio"] as? Int ?? 1,
+            force: cmd["force"] as? Bool ?? false
+        )
     case "lights":
         joycons.setLights(side: cmd["side"] as? String, mask: UInt8(cmd["mask"] as? Int ?? 1))
+    case "home_led":
+        joycons.setHome(side: cmd["side"] as? String, mode: cmd["mode"] as? String ?? "off")
+    case "joy_find":
+        joycons.locate(seconds: cmd["seconds"] as? Double ?? 3)
+    case "imu_stream":
+        // 手腕精调：开着时每个 0x30 包推一次 joy_gyro；最多 20 秒，渲染进程忘了关也会自己停
+        joycons.stream(side: cmd["side"] as? String, seconds: (cmd["on"] as? Bool ?? false) ? 20 : 0)
     case "asr_start":
         speech.start(lang: cmd["lang"] as? String ?? "zh-CN", target: cmd["target"] as? String ?? "chat")
     case "asr_stop":
@@ -51,6 +68,7 @@ startCommandReader { cmd in
     case "display_mm":
         displayMillimeters(id: id, display: UInt32(clamping: cmd["display"] as? Int ?? 0))
     case "quit":
+        joycons.shutdown()
         exit(0)
     default:
         emit(["t": "error", "id": id, "msg": "未知命令 \(name)"])

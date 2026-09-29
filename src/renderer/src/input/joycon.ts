@@ -31,6 +31,8 @@ export interface JoyInfo {
   battery: number
   charging: boolean
   name: string
+  /** 放在桌上（原生助手按 IMU 判断）：这时不震，拿起来就恢复 */
+  resting: boolean
 }
 
 export type UiAction = 'confirm' | 'cancel'
@@ -39,9 +41,9 @@ const LONG_MS = 650
 
 class InputHub {
   status = createStore<{ L: JoyInfo; R: JoyInfo; P: JoyInfo; lastInput: number }>({
-    L: { connected: false, battery: -1, charging: false, name: 'Joy-Con (L)' },
-    R: { connected: false, battery: -1, charging: false, name: 'Joy-Con (R)' },
-    P: { connected: false, battery: -1, charging: false, name: 'Pro Controller' },
+    L: { connected: false, battery: -1, charging: false, name: 'Joy-Con (L)', resting: false },
+    R: { connected: false, battery: -1, charging: false, name: 'Joy-Con (R)', resting: false },
+    P: { connected: false, battery: -1, charging: false, name: 'Pro Controller', resting: false },
     lastInput: 0
   })
   events = new Emitter<{ button: ButtonEvent; action: UiAction }>()
@@ -61,9 +63,15 @@ class InputHub {
   }
 
   private onBridge(e: BridgeEvent): void {
+    if (e.t === 'joy_motion') {
+      const cur = this.status.get()[e.side]
+      if (cur.resting !== e.resting) this.status.patch({ [e.side]: { ...cur, resting: e.resting } } as any)
+      return
+    }
     if (e.t === 'joy_conn') {
       const side = e.side
-      this.status.patch({ [side]: { ...this.status.get()[side], connected: e.connected, name: e.name } } as any)
+      const cur = this.status.get()[side]
+      this.status.patch({ [side]: { ...cur, connected: e.connected, name: e.name, resting: e.connected && cur.resting } } as any)
       if (!e.connected) {
         this.applyMask(side, 0)
         if (side !== 'R') this.stick.lx = this.stick.ly = 0
@@ -141,6 +149,13 @@ class InputHub {
   connected(): { L: boolean; R: boolean } {
     const s = this.status.get()
     return { L: s.L.connected || s.P.connected, R: s.R.connected || s.P.connected }
+  }
+
+  /** 连着的手柄是不是全都放在桌上了（一只都没连 = false） */
+  allResting(): boolean {
+    const s = this.status.get()
+    const on = (['L', 'R', 'P'] as const).filter((k) => s[k].connected)
+    return on.length > 0 && on.every((k) => s[k].resting)
   }
 
   onButton(fn: (e: ButtonEvent) => void): () => void {

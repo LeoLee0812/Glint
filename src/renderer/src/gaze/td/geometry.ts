@@ -104,6 +104,8 @@ export interface TdDerived {
   eyePitch: number
   blink: number
   jaw: number
+  /** 挑眉 0~1 */
+  brow: number
 }
 
 /** 一帧 → 特征。basis 是相机 → D 的旋转（外面做过重力平滑） */
@@ -131,7 +133,8 @@ export function deriveFrame(f: TdFrame, basis: M3): TdDerived | null {
   for (let i = 0; i < 9; i++) features[F.rot + i] = rotD[i]
   const bs = f.bs || {}
   const blink = Math.max(bs.eyeBlinkLeft ?? 0, bs.eyeBlinkRight ?? 0)
-  return { features, head, rotD, eyeYaw: yaw, eyePitch: pitch, blink, jaw: bs.jawOpen ?? 0 }
+  const brow = Math.min(1, (bs.browInnerUp ?? 0) * 0.6 + ((bs.browOuterUpLeft ?? 0) + (bs.browOuterUpRight ?? 0)) * 0.3)
+  return { features, head, rotD, eyeYaw: yaw, eyePitch: pitch, blink, jaw: bs.jawOpen ?? 0, brow }
 }
 
 // ---------- 给实时小人的头位置 / 表情 ----------
@@ -159,7 +162,8 @@ export function tdHeadPos(d: TdDerived, mirrorX: boolean): HeadPos {
     w: FACE_W / (VIEW_W * zz),
     roll,
     yaw: 1.4 * Math.tan(Math.max(-1.2, Math.min(1.2, yawAng))),
-    pitch: 0.5 + (downAng * 180) / Math.PI / 150
+    pitch: 0.5 + (downAng * 180) / Math.PI / 150,
+    rot: { yaw: yawAng, pitch: -downAng, roll }
   }
 }
 
@@ -169,6 +173,7 @@ export function tdExpr(d: TdDerived, mirrorX: boolean): FaceExpr {
   return {
     blink: d.blink,
     mouth: Math.min(1, d.jaw * 1.6),
+    brow: d.brow,
     // eyeYaw 正 = 往脸自己的左边看 = 镜子里往左
     lookX: clamp1((-sx * d.eyeYaw) / 0.35),
     lookY: clamp1(-d.eyePitch / 0.3)

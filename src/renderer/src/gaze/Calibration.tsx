@@ -6,6 +6,7 @@ import { input } from '../input/joycon'
 import type { FitInput } from './ridge'
 import { avatarStore } from '../avatar/avatar'
 import { occludedRegion, isOccluded, visibleCenter } from './td/mount'
+import { meanHead3D, screenGeo, type Head3D } from './headmotion'
 
 // 全屏校准：盯着点看，点缩小时采集眼睛特征；结束后拟合并给出交叉验证误差
 // （摄像头在 Worker 里拟合岭回归；iPhone 原深感拟合几何模型）
@@ -151,6 +152,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     const groups: number[] = []
     const zs: number[] = []
     const poses: HeadPos[] = []
+    const heads: Head3D[] = []
     for (let i = 0; i < pts.length; i++) {
       if (abortRef.current) return
       const [nx, ny] = pts[i]
@@ -179,6 +181,7 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
       }
       if (got.faceScale) zs.push(got.faceScale)
       poses.push(...got.poses)
+      heads.push(...got.heads)
       rumble('soft', 'R')
     }
     setDot(null)
@@ -193,7 +196,11 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
     const input: FitInput = { rows, tx, ty, groups, screenW: W, screenH: H }
     try {
       scaleRef.current = zs.length ? zs.reduce((a, b) => a + b, 0) / zs.length : null
-      const r = await gaze.calibrate(input, scaleRef.current, meanPose(poses))
+      // 头动补偿：记下校准时的三维坐姿和这块屏幕的物理尺寸（摄像头按在屏幕上沿正中算）
+      const ref = meanHead3D(heads)
+      const disp = ref ? await la.truedepth.display().catch(() => null) : null
+      const head = ref && disp ? { ref, geo: screenGeo(boundsStore.get().display, disp.mmW, disp.ptW) } : null
+      const r = await gaze.calibrate(input, scaleRef.current, meanPose(poses), head)
       setResult({ cv: r.cv, ms: r.ms, samples: rows.length, note: r.note, skipped: all.length - pts.length })
       setPhase('result')
       rumble('done', 'R')
@@ -312,20 +319,10 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
               <div className="calib-meta">
                 <span>摄像头：{status.cameraLabel || '启动中…'}</span>
                 <span>帧率：{status.fps} fps</span>
-                <span>
-                  脸占画面：{scale ? `${Math.round(scale * 100)}%` : '—'}
-                  {scale && scale > 0.42 ? '（太近了，往后坐一点）' : scale && scale < 0.13 ? '（太远了，往前坐一点）' : ''}
-                </span>
+                <span>脸占画面：{scale ? `${Math.round(scale * 100)}%` : '—'}</span>
               </div>
               <PoseHint />
-              <ul className="calib-tips">
-                <li>坐正，眼睛离屏幕 45～65 厘米；接下来 25 秒尽量别动头，只动眼睛</li>
-                <li>每个点出现后盯住它的圆心，直到它缩小消失</li>
-                <li>
-                  M4 MacBook Air 的「人物居中」会自动裁切画面，校准会失效：控制中心 → 视频效果 → 关掉人物居中
-                </li>
-                <li>光线从正面来最好，别背光；反光眼镜会降低精度</li>
-              </ul>
+              <p className="calib-tips">眼睛离屏幕 45～65 厘米；接下来 25 秒尽量别动头，只动眼睛</p>
             </>
           )}
           <div className="calib-actions">
@@ -432,22 +429,22 @@ function CalibrationInner({ kind }: { kind: 'full' | 'validate' | 'drift' }): Re
 /** 校准前的摆位提示：脸居中、远近合适。校准时的位置会被记住，之后偏了就按它提醒 */
 function PoseHint(): React.JSX.Element {
   const cur = useStore(gaze.pose).cur
-  let tip = '坐到你平时最舒服的位置再开始：之后头挪开了，Glint 会按这个位置提醒你挪回来'
+  let tip = '位置合适，可以开始'
   let bad = false
   if (!cur) {
-    tip = '先让脸完整出现在画面里'
+    tip = '让脸完整进画面'
     bad = true
   } else if (cur.w > 0.42) {
-    tip = '离得太近了，往后靠一点'
+    tip = '太近了，往后靠一点'
     bad = true
   } else if (cur.w < 0.13) {
-    tip = '离得太远了，往前凑一点'
+    tip = '太远了，往前凑一点'
     bad = true
   } else if (Math.abs(cur.cx - 0.5) > 0.18) {
-    tip = cur.cx > 0.5 ? '脸偏右了，往左挪一点到画面中间' : '脸偏左了，往右挪一点到画面中间'
+    tip = cur.cx > 0.5 ? '往左挪一点' : '往右挪一点'
     bad = true
   } else if (Math.abs(cur.cy - 0.45) > 0.2) {
-    tip = cur.cy > 0.45 ? '脸在画面偏下，坐高一点或把屏幕往下压一点' : '脸在画面偏上，往下坐一点'
+    tip = cur.cy > 0.45 ? '坐高一点' : '往下坐一点'
     bad = true
   }
   return <div className={`calib-pose ${bad ? 'bad' : 'ok'}`}>{tip}</div>
@@ -487,16 +484,16 @@ function TdPanel(): React.JSX.Element {
 function TdPoseHint(): React.JSX.Element {
   const st = useStore(gaze.status)
   const d = st.link?.distanceCm ?? null
-  let tip = '坐到平时的位置就行：原深感会补偿头动，校准时不用僵着'
+  let tip = '位置合适，自然坐着就行'
   let bad = false
   if (st.link?.state !== 'live' || !st.face) {
-    tip = '先让手机的前置镜头看到你的脸'
+    tip = '手机还看不到你的脸'
     bad = true
   } else if (d != null && d < 30) {
-    tip = '离手机太近了，往后靠一点（40～70 厘米最好）'
+    tip = '太近了，往后靠一点'
     bad = true
   } else if (d != null && d > 85) {
-    tip = '离手机太远了，往前凑一点（40～70 厘米最好）'
+    tip = '太远了，往前凑一点'
     bad = true
   }
   return <div className={`calib-pose ${bad ? 'bad' : 'ok'}`}>{tip}</div>

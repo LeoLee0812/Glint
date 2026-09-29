@@ -1,6 +1,7 @@
 import type { ChatContentPart, ChatMessageIn, ModelRef } from '../../../shared/types'
 import { createStore, uid } from '../store'
 import { la, settingsStore, rumble, toast, uiStore } from '../appState'
+import { haptic } from '../input/haptics'
 import { focus } from '../focus/focus'
 import { snapshot } from '../focus/snapshot'
 import type { FocusContext } from '../focus/types'
@@ -76,11 +77,13 @@ function history(): ChatMessageIn[] {
 }
 
 // 流式回调统一在这里分发
-const streams = new Map<string, { msgId: string; buf: string; reasoning: string; timer: ReturnType<typeof setTimeout> | null }>()
+const streams = new Map<string, { msgId: string; buf: string; reasoning: string; timer: ReturnType<typeof setTimeout> | null; t0: number }>()
 
 la.llm.onDelta((d) => {
   const st = streams.get(d.reqId)
   if (!st) return
+  // 开始出字：等了一阵（慢模型先想十几秒）才出第一个字时，右手柄往上扬一下，不用一直盯着右边
+  if (d.text && !st.buf && performance.now() - st.t0 > 1200) haptic('start', 'R')
   if (d.text) st.buf += d.text
   if (d.reasoning) st.reasoning += d.reasoning
   // 50ms 合并一次渲染，避免每个 token 都重排
@@ -237,7 +240,7 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
 
   const content: ChatContentPart[] | string = image ? [{ type: 'image', dataUrl: image }, { type: 'text', text: prompt }] : prompt
   const reqId = uid('req')
-  streams.set(reqId, { msgId: botMsg.id, buf: '', reasoning: '', timer: null })
+  streams.set(reqId, { msgId: botMsg.id, buf: '', reasoning: '', timer: null, t0: performance.now() })
   chatStore.patch({ busy: reqId })
   la.llm.start({
     reqId,

@@ -104,18 +104,24 @@ export function TopBar(): React.JSX.Element {
             {head.lost ? '看不到脸' : head.advice!.main}
           </span>
         )}
-        <span className={`pill ${j.L.connected || j.P.connected ? 'ok' : 'off'}`} title={j.L.connected ? '左手柄已连接' : '左手柄没连：按一下它的任意键唤醒'}>
+        <span
+          className={`pill ${j.L.connected || j.P.connected ? 'ok' : 'off'}${j.L.connected && j.L.resting ? ' rest' : ''}`}
+          title={j.L.connected ? (j.L.resting ? '左手柄放在桌上：震动先停了，拿起来就恢复' : '左手柄已连接') : '左手柄没连：按一下它的任意键唤醒'}
+        >
           <Icon name="gamepad" />L
           <Battery level={j.L.connected ? j.L.battery : -1} />
         </span>
-        <span className={`pill ${j.R.connected || j.P.connected ? 'ok' : 'off'}`} title={j.R.connected ? '右手柄已连接' : '右手柄没连：按一下它的任意键唤醒'}>
+        <span
+          className={`pill ${j.R.connected || j.P.connected ? 'ok' : 'off'}${j.R.connected && j.R.resting ? ' rest' : ''}`}
+          title={j.R.connected ? (j.R.resting ? '右手柄放在桌上：震动先停了，拿起来就恢复' : '右手柄已连接') : '右手柄没连：按一下它的任意键唤醒'}
+        >
           <Icon name="gamepad" />R
           <Battery level={j.R.connected ? j.R.battery : -1} />
         </span>
         {f.mode !== 'none' && (
           <span className={`pill focus-pill ${f.mode}`}>
             <Icon name={f.mode === 'hard' ? 'scope' : 'eye'} />
-            {GRAN_LABEL[f.gran]}
+            {f.sel?.unit ?? GRAN_LABEL[f.gran]}
           </span>
         )}
         {s?.jevMode && <span className="pill jev">Jev</span>}
@@ -123,11 +129,12 @@ export function TopBar(): React.JSX.Element {
       <div className="actions">
         <div className="side-seg" title="视线跟哪一边：左手柄 − 跟左边内容，右手柄 + 跟右边的 AI 回答（看另一边时焦点不会跑过去）">
           <Icon name="eye" />
-          <button className={ui.side === 'left' ? 'on' : ''} onClick={() => switchSide('left')}>
+          {/* 左蓝右红：跟左右两只 Joy-Con 的颜色对上 */}
+          <button className={`seg-l${ui.side === 'left' ? ' on' : ''}`} onClick={() => switchSide('left')}>
             内容
             <kbd>−</kbd>
           </button>
-          <button className={ui.side === 'right' ? 'on' : ''} onClick={() => switchSide('right')}>
+          <button className={`seg-r${ui.side === 'right' ? ' on' : ''}`} onClick={() => switchSide('right')}>
             回答
             <kbd>+</kbd>
           </button>

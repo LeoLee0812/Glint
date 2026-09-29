@@ -1,9 +1,10 @@
 import type { Terminal } from '@xterm/xterm'
 import type { Anchor, Box, Dir, FocusContext, Granularity, PaneAdapter, Selection } from './types'
 import { clip, unionBox } from './types'
+import { terminalAgent } from '../panes/agent'
 
 // 终端视图的焦点：视线 → 字符格 → 行 / 词；「段」= 前后连续的非空行；「节」= 当前屏
-// 终端里跑的多半是 Qwen Code，所以上下文会带上整屏输出
+// 终端里跑的多半是 Qwen Code 这类编程智能体，所以上下文会带上整屏输出
 
 const seg = new Intl.Segmenter('zh', { granularity: 'word' })
 
@@ -201,10 +202,10 @@ export function createTerminalAdapter(id: string, getTerm: () => Terminal | null
       const block: string[] = []
       for (let r = s; r <= e; r++) block.push(line(r).text)
       const screen = screenText()
-      const isagent = /Qwen Code|agent\.ai|✻|⏺|╭─|Do you want to|❯ \d\./.test(screen)
+      const agent = terminalAgent(screen)
       return {
         source: 'terminal',
-        docTitle: isagent ? '终端里的 Qwen Code' : title(),
+        docTitle: agent ? `终端里的 ${agent}` : title(),
         location: `终端第 ${ta.row + 1} 行`,
         gran: sel?.gran ?? gran,
         selection: clip(sel?.text ?? '', 3000),

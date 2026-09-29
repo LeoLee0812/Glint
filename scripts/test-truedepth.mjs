@@ -13,7 +13,7 @@
 //   6. 丢包 5%、抖动 20ms 时视线圈不乱跳
 
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -56,6 +56,8 @@ async function waitFor(fn, timeoutMs, stepMs = 100) {
 // ---------- 起开发版 ----------
 
 const userData = mkdtempSync(join(tmpdir(), 'lookask-td-test-'))
+// 跳过首次引导（第一步拍大头照），不然拍照窗口一上来就盖住校准
+writeFileSync(join(userData, 'settings.json'), JSON.stringify({ onboarded: true }))
 const app = spawn(join(ROOT, 'node_modules/.bin/electron-vite'), ['dev'], {
   cwd: ROOT,
   env: {

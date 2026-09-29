@@ -1,5 +1,6 @@
 import type { Settings, Rect } from '../../shared/types'
 import { createStore, uid } from './store'
+import { haptic } from './input/haptics'
 
 // 全局共享状态：设置、窗口位置、界面模式、提示条
 
@@ -58,8 +59,8 @@ export const uiStore = createStore<{
   mode: UiMode
   side: Side
   showSettings: boolean
-  /** 打开设置时直接跳到哪一页（比如发现 iPhone 待配对时跳到「眼动」） */
-  settingsTab: 'gaze' | null
+  /** 打开设置时直接跳到哪一页（比如发现 iPhone 待配对时跳到「眼动」，拍大头照发现没填 Key 时跳到「模型服务」） */
+  settingsTab: 'gaze' | 'providers' | null
   showHelp: boolean
   showCalibration: boolean
   calibrationKind: 'full' | 'validate' | 'drift'
@@ -111,14 +112,7 @@ export function dismissToast(id: string): void {
   toastStore.set((s) => ({ list: s.list.filter((t) => t.id !== id) }))
 }
 
-/** 手柄震动反馈（没连手柄时静默） */
-export function rumble(kind: 'tick' | 'done' | 'alert' | 'soft' = 'tick', side?: 'L' | 'R'): void {
-  const presets = {
-    tick: { amp: 0.32, ms: 45, low: 160, high: 320 },
-    soft: { amp: 0.2, ms: 60, low: 120, high: 240 },
-    done: { amp: 0.45, ms: 90, low: 180, high: 360 },
-    alert: { amp: 0.7, ms: 220, low: 140, high: 280 }
-  }
-  la.bridge.send({ cmd: 'rumble', side, ...presets[kind] })
-  if (kind === 'done') setTimeout(() => la.bridge.send({ cmd: 'rumble', side, ...presets.tick }), 150)
+/** 手柄震动反馈（没连手柄时静默）；手感统一定义在 input/haptics.ts（strong = 拍大头照快门那一下，满幅偏低频） */
+export function rumble(kind: 'tick' | 'done' | 'alert' | 'soft' | 'strong' = 'tick', side?: 'L' | 'R'): void {
+  haptic(kind, side)
 }

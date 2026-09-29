@@ -5,6 +5,7 @@ import type { Fixation } from '../gaze/filters'
 import type { Anchor, Box, Dir, FocusContext, Granularity, PaneAdapter, Selection } from './types'
 import { GRAN_ORDER, GRAN_LABEL, unionBox } from './types'
 import { magnetNow, snapParams } from './snap'
+import { haptic } from '../input/haptics'
 
 // 焦点控制器：把「眼睛大概在看哪」变成「具体指着哪段文字」
 // - 软焦点：跟着注视点走，默认按段高亮（摄像头眼动只能到段落级）
@@ -230,7 +231,8 @@ class FocusController {
   /** 统计每个段落的停留时长和回看次数（给 Jev 判断读者是不是卡住了） */
   private trackDwell(f: Fixation): void {
     const sel = this.state.get().sel
-    if (!sel?.blockKey || !this.pane) return
+    // 扫描页的块没有原文，Jev 没法判断难度
+    if (!sel?.blockKey || sel.visual || !this.pane) return
     const key = `${this.pane.id}:${sel.blockKey}`
     const now = Date.now()
     let d = this.dwell.get(key)
@@ -254,44 +256,71 @@ class FocusController {
 
   // ---------- 摇杆 / 按键驱动 ----------
 
-  /** 从当前位置（没有就用视线）出发移动一步，进入硬焦点 */
-  step(dir: Dir): void {
+  /**
+   * 从当前位置（没有就用视线）出发移动一步，进入硬焦点。
+   * 每一步右手柄震一下当刻度：同一句里「咔」，跨句「咔咔」，跨段「咚」，走到头「撞墙」；feel 调轻重（按住连发时越走越轻）
+   */
+  step(dir: Dir, feel = 1): void {
     const st = this.state.get()
     if (st.mode !== 'hard') {
       // 第一次推摇杆：光环正吸着一个词就落在那个词上；否则原地变成「词」焦点，不动
-      if (this.snapToMagnet()) return
+      if (this.snapToMagnet()) return haptic('detent', 'R', { scale: feel })
       if (!this.anchor) this.snapToGaze(false)
       if (!this.anchor || !this.pane) return
       this.update('hard', 'word')
+      haptic('detent', 'R', { scale: feel })
       return
     }
     if (!this.pane || !this.anchor) return
-    const next = this.pane.move(this.anchor, dir)
-    if (next) {
-      this.anchor = next
-      this.update('hard', st.gran === 'paragraph' || st.gran === 'section' ? 'word' : st.gran)
-      this.scrollIntoView()
-    }
+    const prev = this.anchor
+    const next = this.pane.move(prev, dir)
+    if (!next) return haptic('wall', 'R')
+    this.anchor = next
+    this.update('hard', st.gran === 'paragraph' || st.gran === 'section' ? 'word' : st.gran)
+    this.scrollIntoView()
+    haptic(this.crossing(prev, st.sel), 'R', { scale: feel })
   }
 
+  /** 这一步跨过了什么：跨段 = block，词粒度下跨句 = sentence，其余 = detent */
+  private crossing(prev: Anchor, prevSel: Selection | null): 'block' | 'sentence' | 'detent' {
+    const sel = this.state.get().sel
+    if (prevSel?.blockKey && sel?.blockKey && prevSel.blockKey !== sel.blockKey) return 'block'
+    if (sel?.gran === 'word' && this.pane && this.anchor) {
+      const a = this.pane.select(prev, 'sentence')
+      const b = this.pane.select(this.anchor, 'sentence')
+      const ra = a?.rects[0]
+      const rb = b?.rects[0]
+      if (a && b && (a.text !== b.text || ra?.x !== rb?.x || ra?.y !== rb?.y)) return 'sentence'
+    }
+    return 'detent'
+  }
+
+  /** 十字键跳段（左手）：每跳一段左手柄「咚」一下，到头了「撞墙」 */
   stepBlock(dir: 'up' | 'down'): void {
     if (!this.anchor || !this.pane?.moveBlock) {
       this.snapToGaze(false)
       if (!this.anchor || !this.pane?.moveBlock) return
     }
     const next = this.pane.moveBlock!(this.anchor!, dir)
-    if (next) {
-      this.anchor = next
-      this.update('hard', 'paragraph')
-    }
+    if (!next) return haptic('wall', 'L')
+    this.anchor = next
+    this.update('hard', 'paragraph')
+    haptic('block', 'L')
   }
 
   cycleGran(): void {
     const st = this.state.get()
     if (!this.anchor) this.snapToGaze(false)
     if (!this.anchor) return
-    const i = GRAN_ORDER.indexOf(st.gran)
-    const g = GRAN_ORDER[(i + 1) % GRAN_ORDER.length]
+    // 视图不支持的粒度跳过（扫描页没有词和句，只有 行 → 段 → 栏）
+    const ok = this.pane?.grans?.(this.anchor) ?? GRAN_ORDER
+    let i = GRAN_ORDER.indexOf(st.gran)
+    let g = st.gran
+    for (let k = 0; k < GRAN_ORDER.length; k++) {
+      i = (i + 1) % GRAN_ORDER.length
+      g = GRAN_ORDER[i]
+      if (ok.includes(g)) break
+    }
     this.update('hard', g)
   }
 
@@ -365,7 +394,7 @@ class FocusController {
     const sel = this.pane.select(this.anchor, gran)
     // 文字视图里选到空白（终端空行、段落间隙）就不算焦点
     if (sel && !sel.text.trim() && sel.space === 'client') return
-    const label = sel ? `${GRAN_LABEL[sel.gran]} · ${sel.text.replace(/\s+/g, ' ').slice(0, 24)}` : ''
+    const label = sel ? `${sel.unit ?? GRAN_LABEL[sel.gran]} · ${sel.text.replace(/\s+/g, ' ').slice(0, 24)}` : ''
     const next: FocusState = { mode, gran: sel?.gran ?? gran, paneId: this.pane.id, sel, label, at: performance.now() }
     this.state.set(next)
     this.events.emit('changed', next)
@@ -410,7 +439,7 @@ class FocusController {
     if (!this.pane || !this.anchor) return null
     const st = this.state.get()
     const ctx = await this.pane.context(this.anchor, st.gran)
-    if (opts.withImage && st.sel && this.pane.capture) {
+    if (opts.withImage && !ctx.image && st.sel && this.pane.capture) {
       const u = unionBox(st.sel.rects)
       if (u) {
         const pad = 14

@@ -19,6 +19,13 @@
   --green: #34c759;
   --orange: #ff9500;
   --red: #ff3b30;
+  /* Joy-Con 电光蓝 / 电光红：左手柄管左边内容、右手柄管右边回答，界面左右两侧也按这个配色；-ink 是同色系加深、白底上当文字用 */
+  --joy-l: #0ab9e6;
+  --joy-r: #ff3c28;
+  --joy-l-ink: #067fa8;
+  --joy-r-ink: #d92b1a;
+  /* Joy-Con 电光紫：AI 在思考（提问到出第一个字之间）时的呼吸灯颜色，白底上直接当文字用也够清楚 */
+  --joy-purple: #b400e6;
   --purple: #af52de;
   --purple-tint: rgba(175, 82, 222, 0.09);
   --accent: var(--blue);
@@ -114,6 +121,7 @@ button {
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
+  text-decoration: none;
   transition: background 0.15s, transform 0.1s, opacity 0.15s;
 }
 .btn:hover {
@@ -259,6 +267,14 @@ kbd {
 }
 .pill.off {
   color: var(--dim);
+}
+/* 手柄放在桌上：变淡，小圆点换成空心 */
+.pill.rest {
+  opacity: 0.55;
+}
+.pill.rest::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--green);
 }
 .pill.off::before {
   background: rgba(60, 60, 67, 0.25);
@@ -496,6 +512,16 @@ kbd {
   width: 0.5px;
   height: 16px;
   background: var(--sep-strong);
+}
+/* 扫描件 PDF：按版面切块的提示 */
+.pane-toolbar .scan-tag {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--blue-tint);
+  color: var(--blue);
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 .empty {
   margin: auto;
@@ -893,9 +919,31 @@ kbd {
     opacity: 0;
   }
 }
+/* AI 在思考：前面一颗 Joy-Con 电光紫的呼吸灯，和右手柄 HOME 灯一个节奏（约 2 秒一呼一吸） */
 .thinking {
-  color: var(--dim);
+  color: var(--joy-purple);
   font-size: 12.5px;
+}
+.thinking::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--joy-purple);
+  box-shadow: 0 0 8px rgba(180, 0, 230, 0.55);
+  vertical-align: middle;
+  animation: joyBreathe 2s ease-in-out infinite;
+}
+@keyframes joyBreathe {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .msg-foot {
   display: flex;
@@ -1094,6 +1142,11 @@ kbd {
   width: 100vw;
   height: 100vh;
   pointer-events: none;
+  transition: opacity 0.6s;
+}
+/* 手柄都放下了（多半在用键盘鼠标）：视线光环退到背景里 */
+.gaze-layer.joy-rest .gaze-canvas {
+  opacity: 0.35;
 }
 /* 软焦点：极淡的一层底色，存在感交给视线光环 */
 .hl {
@@ -1369,10 +1422,10 @@ kbd {
   font-weight: 600;
 }
 .joy-l {
-  color: var(--cyan);
+  color: var(--joy-l-ink);
 }
 .joy-r {
-  color: var(--red);
+  color: var(--joy-r-ink);
 }
 .modal.settings {
   width: min(820px, 94vw);
@@ -1686,7 +1739,8 @@ kbd {
   will-change: transform;
 }
 .buddy-head img,
-.buddy-head svg {
+.buddy-head svg,
+.buddy-head canvas {
   width: 100%;
   height: 100%;
   border-radius: 50%;
@@ -2062,10 +2116,34 @@ kbd {
   color: var(--blue);
   border-color: rgba(0, 122, 255, 0.35);
 }
+/* 左蓝右红：「内容 −」跟左手柄一样电光蓝，「回答 +」跟右手柄一样电光红；没选中时只给 − / + 染色 */
+.side-seg button.seg-l kbd {
+  color: var(--joy-l-ink);
+}
+.side-seg button.seg-r kbd {
+  color: var(--joy-r-ink);
+}
+.side-seg button.on.seg-l {
+  background: #eaf8fd;
+  color: var(--joy-l-ink);
+}
+.side-seg button.on.seg-r {
+  background: #fff0ee;
+  color: var(--joy-r-ink);
+}
+.side-seg button.on.seg-l kbd {
+  color: var(--joy-l-ink);
+  border-color: rgba(10, 185, 230, 0.5);
+}
+.side-seg button.on.seg-r kbd {
+  color: var(--joy-r-ink);
+  border-color: rgba(255, 60, 40, 0.45);
+}
 .left-wrap,
 .right {
   position: relative;
 }
+/* 顶栏底下那道线：只显示视线跟着的那一侧——左边模式是一道蓝线，右边模式是一道红线，不会两道同时出现 */
 .left-wrap::before,
 .right::before {
   content: '';
@@ -2074,15 +2152,68 @@ kbd {
   right: 0;
   top: 0;
   height: 2px;
-  background: linear-gradient(90deg, rgba(0, 122, 255, 0), var(--blue) 18%, var(--blue) 82%, rgba(0, 122, 255, 0));
+  background: linear-gradient(90deg, rgba(10, 185, 230, 0), var(--joy-l) 18%, var(--joy-l) 82%, rgba(10, 185, 230, 0));
   opacity: 0;
   transition: opacity 0.3s;
   pointer-events: none;
   z-index: 4;
 }
+.right::before {
+  background: linear-gradient(90deg, rgba(255, 60, 40, 0), var(--joy-r) 18%, var(--joy-r) 82%, rgba(255, 60, 40, 0));
+}
 .side-left .left-wrap::before,
 .side-right .right::before {
-  opacity: 0.9;
+  opacity: 0.95;
+}
+/* AI 在思考（提问到出第一个字之间，router.ts 给 <html> 挂 ai-thinking）且在右边模式：红线换成电光紫、加粗一点、跟着呼吸 */
+.ai-thinking .side-right .right::before {
+  height: 3px;
+  background: linear-gradient(90deg, rgba(180, 0, 230, 0), var(--joy-purple) 12%, var(--joy-purple) 88%, rgba(180, 0, 230, 0));
+  box-shadow: 0 0 10px rgba(180, 0, 230, 0.45);
+  animation: joyBreathe 2s ease-in-out infinite;
+}
+
+/* ---------- 右侧（AI 回答）整块用右手柄的电光红 ----------
+   在这一块里把蓝色系变量换成红色系，里面的字、图标、按钮、链接、气泡、快捷键标记自动跟着变；
+   --accent / --hard 在 :root 里是 var(--blue) 当场算好的值，要一起重写。小人卡片默认也待在右边，一起换。
+   左边（内容）保持蓝色。模型下拉菜单是系统原生弹出菜单，高亮色跟 macOS 的强调色走，改不了 */
+section.right,
+.buddy {
+  --blue: var(--joy-r-ink);
+  --blue-press: #b8200f;
+  --blue-tint: rgba(255, 60, 40, 0.1);
+  --cyan: var(--joy-r);
+  --accent: var(--joy-r-ink);
+  --hard: var(--joy-r-ink);
+}
+/* 右侧几处写死的蓝色 */
+section.right .quick .btn kbd {
+  border-color: rgba(255, 60, 40, 0.3);
+}
+section.right .composer textarea:focus {
+  box-shadow: 0 0 0 3px rgba(255, 60, 40, 0.12);
+}
+section.right .fork-card + .fork-card::before {
+  border-left-color: rgba(255, 60, 40, 0.35);
+}
+/* 视线跟右边时，焦点高亮和它上面的小标签也是红的（高亮画在全屏浮层上，不在 section.right 里） */
+.side-right .hl.soft {
+  background: rgba(255, 60, 40, 0.06);
+}
+.side-right .hl.hard {
+  background: rgba(255, 60, 40, 0.14);
+}
+.side-right .hl-label {
+  background: var(--joy-r-ink);
+  box-shadow: 0 2px 8px rgba(255, 60, 40, 0.3);
+}
+/* 顶栏那颗「词 / 句 / 段」焦点小药丸：焦点在右边时也跟着变红 */
+.side-right .pill.focus-pill.hard {
+  background: rgba(255, 60, 40, 0.1);
+  color: var(--joy-r-ink);
+}
+.side-right .pill.focus-pill.hard .ic {
+  color: var(--joy-r-ink);
 }
 
 /* ---------- 往下裂变的解释窗口 ---------- */

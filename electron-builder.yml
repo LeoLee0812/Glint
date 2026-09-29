@@ -14,6 +14,9 @@ asarUnpack:
 extraResources:
   - from: native/bin/lookask-bridge
     to: bin/lookask-bridge
+  # 菜单栏小图标（template 图，scripts/make-tray-icon.py 生成）
+  - from: resources/tray
+    to: tray
 npmRebuild: false
 # 只留中英文界面资源
 electronLanguages:

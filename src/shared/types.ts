@@ -2,7 +2,7 @@
 
 export type ProviderKind = 'openai' | 'anthropic'
 
-/** 一个大模型服务商：OpenAI 兼容（千问/DeepSeek/OpenLux/智谱/Kimi/Ollama…）或 Anthropic 格式 */
+/** 一个大模型服务商：OpenAI 兼容（百炼千问、本地 Ollama，或自己添加的）或 Anthropic 格式 */
 export interface Provider {
   id: string
   name: string
@@ -12,6 +12,8 @@ export interface Provider {
   models: string[]
   /** 附加到请求体里的字段，比如千问关思考：{"enable_thinking": false} */
   extraBody?: Record<string, unknown>
+  /** 官网上创建 / 查看 API Key 的页面，设置里显示成「去官网拿 Key」 */
+  console?: string
 }
 
 export interface ModelRef {
@@ -50,13 +52,15 @@ export interface GazeConfig {
   smoothing: number
   /** 吸附强度 0~1：视线光环吸词有多积极、软焦点多不容易跳段（0.4 约等于最早的手感） */
   magnet: number
+  /** 摄像头的头动补偿：头挪开、转头时按三维头姿修正视线（默认开，要重新校准一次才生效） */
+  headComp?: boolean
 }
 
-/** 实时小人：拍的大头照交给哪个图生图服务变成卡通形象（OpenAI 兼容的 images/edits 接口） */
+/** 实时小人：拍的大头照交给阿里云百炼的千问图像编辑模型（Qwen-Image）变成卡通形象 */
 export interface AvatarConfig {
+  /** 用哪个百炼服务商的 Key（地址必须是百炼的） */
   providerId: string
   model: string
-  quality: 'low' | 'medium' | 'high'
   /** 显示屏幕角落里的实时小人 */
   show: boolean
 }
@@ -73,6 +77,8 @@ export interface Settings {
   terminal: { cwd: string; shell: string }
   systemPrompt: string
   leftRatio: number
+  /** 装好后的首次引导（第一步拍大头照）走过了没有，只弹一次 */
+  onboarded: boolean
 }
 
 // ---------- 大模型调用 ----------
@@ -149,6 +155,10 @@ export type BridgeEvent =
   | { t: 'ready'; version: string }
   | { t: 'joy'; side: 'L' | 'R' | 'P'; id: string; b: number; lx: number; ly: number; rx: number; ry: number; bat: number; chg: boolean }
   | { t: 'joy_conn'; side: 'L' | 'R' | 'P'; id: string; name: string; connected: boolean }
+  /** 手柄放在桌上（IMU 几乎不动 3 秒）/ 拿起来了（一动或一按键） */
+  | { t: 'joy_motion'; side: 'L' | 'R' | 'P'; id: string; resting: boolean }
+  /** 手腕精调：这一包（约 15ms）里手柄往右转了多少度、手柄头抬起了多少度（imu_stream 开着时才推） */
+  | { t: 'joy_gyro'; side: 'L' | 'R' | 'P'; id: string; yaw: number; pitch: number }
   | { t: 'asr'; state: 'listening' | 'partial' | 'final' | 'error'; text?: string; error?: string; target?: string }
   | { t: 'log'; msg: string }
   | { t: 'bridge_exit'; code: number | null }
@@ -243,3 +253,34 @@ export interface DisplayInfo {
   /** 物理尺寸是系统报的（true）还是猜的 */
   measured: boolean
 }
+
+/** 菜单栏图标要显示的状态（渲染进程算好推给主进程，变了才推） */
+export interface TrayStatus {
+  gaze: 'off' | 'loading' | 'running' | 'error'
+  source: GazeSourceKind
+  face: boolean
+  calibrated: boolean
+  cvErrorPx: number | null
+  joyL: boolean
+  joyR: boolean
+  /** 手柄放在桌上（震动先停了，拿起来就恢复） */
+  joyRestL: boolean
+  joyRestR: boolean
+  side: 'left' | 'right'
+  jev: boolean
+}
+
+/** 菜单栏菜单点了什么，主进程转给渲染进程执行 */
+export type TrayCommand =
+  | { cmd: 'gaze:toggle' }
+  | { cmd: 'gaze:source'; source: GazeSourceKind }
+  | { cmd: 'calibrate' }
+  | { cmd: 'validate' }
+  | { cmd: 'open' }
+  | { cmd: 'terminal' }
+  | { cmd: 'side'; side: 'left' | 'right' }
+  | { cmd: 'jev' }
+  | { cmd: 'settings' }
+  | { cmd: 'help' }
+  /** 找手柄：让两只手柄「哔哔」响几秒 */
+  | { cmd: 'joy:find' }

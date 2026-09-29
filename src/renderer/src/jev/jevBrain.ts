@@ -4,6 +4,9 @@ import { la, settingsStore } from '../appState'
 import type { FocusContext } from '../focus/types'
 import type { BlockDwell } from '../focus/focus'
 import type { Action } from '../chat/prompts'
+import { looksLikeAgent, looksLikePermissionPrompt, terminalAgent, withoutModeLine } from '../panes/agent'
+
+export { looksLikePermissionPrompt }
 
 // Jev 模式 =「先判断，再开口」：Jev 只做判断（便宜、带概率），决定什么时候插话、怎么答；真正写字交给大模型
 // 规则：state 用中文原文，问题和选项用英文（准确率更高）；数字先在这里分档成文字再给 Jev（它不擅长读数字）
@@ -282,18 +285,13 @@ export async function routeQuestion(
   }
 }
 
-// ---------- 3b. 放行 Qwen Code 之前先评风险 ----------
-
-/** 屏幕底部像不像 Qwen Code 的权限确认框 */
-export function looksLikePermissionPrompt(screen: string): boolean {
-  const tail = screen.split('\n').slice(-18).join('\n')
-  return /Do you want to|❯\s*1\.|Yes, and don.t ask|\(y\/n\)|Allow|Proceed\?|是否允许|要继续吗/.test(tail)
-}
+// ---------- 3b. 放行终端里的编程智能体（Qwen Code）之前先评风险 ----------
 
 export async function riskGate(screen: string): Promise<{ risky: boolean; reason: string; trace: JevTrace } | null> {
   if (!jevEnabled()) return null
-  const tail = screen.split('\n').slice(-30).join('\n').trim()
-  const tr = await run('terminal', 'Joy-Con 放行前的风险判断', `左侧终端里 Qwen Code 请求执行操作，用户正要按手柄放行：\n${tail}`, {
+  const tail = withoutModeLine(screen).split('\n').slice(-30).join('\n').trim()
+  const agent = terminalAgent(screen) ?? '编程智能体'
+  const tr = await run('terminal', 'Joy-Con 放行前的风险判断', `左侧终端里 ${agent} 请求执行操作，用户正要按手柄放行：\n${tail}`, {
     risk: {
       type: 'score',
       instructions: 'Risk level of approving the action the coding agent is asking permission for',
@@ -348,9 +346,9 @@ export async function factCheck(text: string): Promise<void> {
   if (v >= 0.7 && r >= 1) onFact?.({ text: clean, trace: tr, risk: r })
 }
 
-// ---------- 4. 盯着终端里的 Qwen Code：它在等你拍板时提醒 ----------
+// ---------- 4. 盯着终端里的编程智能体（Qwen Code / Qwen Code）：它在等你拍板时提醒 ----------
 
-type TermAlert = (s: { state: string; trace: JevTrace }) => void
+type TermAlert = (s: { state: string; trace: JevTrace; agent: string }) => void
 let onTermAlert: TermAlert | null = null
 export function setTerminalAlertHandler(fn: TermAlert): void {
   onTermAlert = fn
@@ -358,18 +356,40 @@ export function setTerminalAlertHandler(fn: TermAlert): void {
 
 let lastTermHash = ''
 let lastTermAt = 0
+let termRetry: ReturnType<typeof setTimeout> | null = null
 
-export async function judgeTerminal(screen: string): Promise<void> {
+/**
+ * 终端输出停下来时调用，传「取当前整屏」的函数。两次判断至少隔 8 秒；节流期间不直接丢掉，到点再看一眼最新屏幕——
+ * 否则确认框刚好在上次判断后 8 秒内弹出、之后屏幕不再动，就永远不会提醒（Qwen Code 实测踩到过）
+ */
+export async function judgeTerminal(getScreen: () => string): Promise<void> {
   if (!jevEnabled()) return
-  const tail = screen.split('\n').slice(-30).join('\n').trim()
+  let screen: string
+  try {
+    screen = getScreen()
+  } catch {
+    return // 终端已关
+  }
+  const tail = withoutModeLine(screen).split('\n').slice(-30).join('\n').trim()
   if (!tail) return
-  // 先本地粗筛：屏幕上不像 Qwen Code / 交互确认的，不花 Jev 的钱
-  if (!/agent|⏺|✻|╭|Do you want|❯\s*\d\.|\(y\/n\)|Allow|Approve|Proceed|要不要|是否/.test(tail)) return
+  // 先本地粗筛：屏幕上不像编程智能体 / 交互确认的，不花 Jev 的钱
+  if (!looksLikeAgent(screen)) return
   const h = hashText(tail)
-  if (h === lastTermHash || Date.now() - lastTermAt < 8000) return
+  if (h === lastTermHash) return
+  const wait = lastTermAt + 8000 - Date.now()
+  if (wait > 0) {
+    if (termRetry) clearTimeout(termRetry)
+    termRetry = setTimeout(() => {
+      termRetry = null
+      void judgeTerminal(getScreen)
+    }, wait)
+    return
+  }
   lastTermHash = h
   lastTermAt = Date.now()
-  const tr = await run('terminal', 'Qwen Code 现在是什么状态', tail, {
+  const known = terminalAgent(screen)
+  const agent = known ?? '编程智能体'
+  const tr = await run('terminal', `${agent} 现在是什么状态`, tail, {
     state: {
       type: 'choice',
       instructions: 'What is the state of the coding agent shown at the bottom of this terminal output',
@@ -385,10 +405,12 @@ export async function judgeTerminal(screen: string): Promise<void> {
     stuck: { type: 'noul', instructions: 'The agent is stuck repeating the same failing approach' }
   })
   const st = tr.answers.state?.choice
-  if ((st === 'waiting_permission' || st === 'asking_user') && (tr.answers.state?.confidence ?? 0) >= 0.6) {
-    onTermAlert?.({ state: st, trace: tr })
+  // 认得出是 Qwen Code / Qwen Code 时本地规则认确认框很准：屏幕上没有确认框却判成「等你批准」，不提醒
+  const noPrompt = st === 'waiting_permission' && !!known && !looksLikePermissionPrompt(screen)
+  if ((st === 'waiting_permission' || st === 'asking_user') && (tr.answers.state?.confidence ?? 0) >= 0.6 && !noPrompt) {
+    onTermAlert?.({ state: st, trace: tr, agent })
   } else if ((tr.answers.stuck?.noul ?? 0) >= 0.7) {
-    onTermAlert?.({ state: 'stuck', trace: tr })
+    onTermAlert?.({ state: 'stuck', trace: tr, agent })
   }
 }
 

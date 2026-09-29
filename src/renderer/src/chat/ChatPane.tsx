@@ -62,7 +62,7 @@ function FocusChip(): React.JSX.Element {
     <div className={`focus-chip ${f.mode}`}>
       <span className="fc-tag">
         <Icon name={f.mode === 'hard' ? 'scope' : 'eye'} />
-        {GRAN_LABEL[f.gran]}
+        {f.sel.unit ?? GRAN_LABEL[f.gran]}
       </span>
       <span className="fc-text">{text ? (text.length > 80 ? text.slice(0, 80) + '…' : text) : ''}</span>
     </div>
@@ -74,14 +74,16 @@ function UserMsg({ m }: { m: ChatMsg }): React.JSX.Element {
   return (
     <div className="msg user" data-mid={m.id}>
       <div className="bubble msg-plain">{m.text}</div>
-      {m.ctx && (m.ctx.selection || m.ctx.paragraph) && (
+      {m.ctx && (m.ctx.selection || m.ctx.paragraph || m.ctx.scan) && (
         <div className="ctx-quote" onClick={() => setOpen((o) => !o)}>
           <div className="cq-head">
             <Icon name="pin" />
             {m.ctx.docTitle}
-            {m.ctx.location ? ` · ${m.ctx.location}` : ''} · {GRAN_LABEL[m.ctx.gran]}
+            {m.ctx.location ? ` · ${m.ctx.location}` : ''} · {m.ctx.scan?.unit ?? GRAN_LABEL[m.ctx.gran]}
           </div>
-          <div className={`cq-body ${open ? 'open' : ''}`}>{m.ctx.selection || m.ctx.paragraph}</div>
+          <div className={`cq-body ${open ? 'open' : ''}`}>
+            {m.ctx.selection || m.ctx.paragraph || '扫描件没有文字层，发给看图模型的是下面这张截图'}
+          </div>
         </div>
       )}
       {m.image && <img className="ctx-img" src={m.image} alt="焦点截图" />}

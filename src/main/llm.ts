@@ -151,7 +151,9 @@ export async function startStream(req: LlmRequest, emit: Emit): Promise<void> {
       const choice = j.choices?.[0]
       const delta = choice?.delta || {}
       if (delta.content) emit('llm:delta', { reqId: req.reqId, text: delta.content })
-      if (delta.reasoning_content) emit('llm:delta', { reqId: req.reqId, reasoning: delta.reasoning_content })
+      // 百炼叫 reasoning_content，Ollama 叫 reasoning
+      const reasoning = delta.reasoning_content || delta.reasoning
+      if (reasoning) emit('llm:delta', { reqId: req.reqId, reasoning })
       if (j.usage) {
         usage.input = j.usage.prompt_tokens
         usage.output = j.usage.completion_tokens

@@ -11,6 +11,11 @@ export interface HeadPos {
   yaw?: number
   /** 抬头低头：鼻尖在「两眼连线 → 下巴」之间的位置，越大越低头 */
   pitch?: number
+  /**
+   * 头的真实三维转角（弧度，照镜子的方向），实时小人按它转头：
+   * yaw 正 = 脸转向镜子里的右边，pitch 正 = 抬头，roll 正 = 镜子里顺时针歪
+   */
+  rot?: { yaw: number; pitch: number; roll: number }
 }
 
 /** 脸上的小动作（给实时小人用）：眨眼、张嘴、眼珠往哪看（-1~1，镜子方向） */
@@ -19,6 +24,28 @@ export interface FaceExpr {
   mouth: number
   lookX: number
   lookY: number
+  /** 挑眉 0~1 */
+  brow?: number
+}
+
+/**
+ * MediaPipe 的人脸变换矩阵（4×4，列优先：脸的标准坐标 → 相机坐标，相机坐标 x 朝画面右、y 朝上、脸在 -z）
+ * → 照镜子方向的三维转角。镜像只翻左右：画面右边在镜子里是左边
+ */
+export function rotFromMatrix(m: ArrayLike<number>): HeadPos['rot'] | undefined {
+  if (!m || m.length < 16) return undefined
+  // 第 3 列 = 脸的正前方，第 2 列 = 脸的正上方（相机坐标）
+  const fx = m[8]
+  const fy = m[9]
+  const fz = m[10]
+  const ux = m[4]
+  const uy = m[5]
+  if (!(fz > 0.05)) return undefined
+  return {
+    yaw: Math.atan2(-fx, fz),
+    pitch: Math.atan2(fy, Math.hypot(fx, fz)),
+    roll: Math.atan2(-ux, uy)
+  }
 }
 
 /** 人脸框 → 镜像后的头位置（和校准预览、照镜子的方向一致） */
@@ -60,6 +87,7 @@ export function meanPose(list: HeadPos[]): HeadPos | null {
     out.yaw = avg((p) => p.yaw!)
     out.pitch = avg((p) => p.pitch!)
   }
+  if (list.every((p) => p.rot)) out.rot = { yaw: avg((p) => p.rot!.yaw), pitch: avg((p) => p.rot!.pitch), roll: avg((p) => p.rot!.roll) }
   return out
 }
 
@@ -68,5 +96,9 @@ export function lerpPose(e: HeadPos, p: HeadPos, k: number): HeadPos {
   if (p.roll != null) out.roll = e.roll != null ? e.roll + (p.roll - e.roll) * k : p.roll
   if (p.yaw != null) out.yaw = e.yaw != null ? e.yaw + (p.yaw - e.yaw) * k : p.yaw
   if (p.pitch != null) out.pitch = e.pitch != null ? e.pitch + (p.pitch - e.pitch) * k : p.pitch
+  if (p.rot) {
+    const r = e.rot
+    out.rot = r ? { yaw: r.yaw + (p.rot.yaw - r.yaw) * k, pitch: r.pitch + (p.rot.pitch - r.pitch) * k, roll: r.roll + (p.rot.roll - r.roll) * k } : { ...p.rot }
+  }
   return out
 }

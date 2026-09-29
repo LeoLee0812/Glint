@@ -1,6 +1,7 @@
 import { FaceDetector, extractCombinedFeatures, type FaceLandmarkerResult } from '@realeye-io/webcam-eyetracker-light-open'
-import { poseOf, rotationOf, type FaceExpr, type HeadPos } from '../pose'
+import { poseOf, rotationOf, rotFromMatrix, type FaceExpr, type HeadPos } from '../pose'
 import type { GazeFrame, SourceHooks } from '../types'
+import { head3dOf, type Head3D } from '../headmotion'
 
 // 输入源一：Mac 摄像头（或连续互通相机）。摄像头 → MediaPipe 人脸 478 点 → RealEye 特征（关键点 + 表情系数 + 双眼小图）
 // 选了原深感时，拍大头照还会临时借用它（只要画面和人脸框，不算视线）
@@ -188,6 +189,7 @@ export class WebcamSource {
     let faceBox: GazeFrame['faceBox'] = null
     let pose: HeadPos | null = null
     let expr: FaceExpr | null = null
+    let head3d: Head3D | null = null
     if (det && det.allLandmarks?.length >= 478) {
       const img = this.ctx.getImageData(0, 0, vw, vh)
       const f = extractCombinedFeatures(
@@ -210,9 +212,14 @@ export class WebcamSource {
       this.lastFaceBox = faceBox
       this.lastFaceBoxAt = t
       pose = { ...poseOf(faceBox), ...(rotationOf(det.allLandmarks, vw, vh) || {}) }
+      // RealEye 把列优先的矩阵按行拆成了二维数组，这里拼回原始的 16 个数
+      const tm = det.transformationMatrix
+      if (tm?.length === 4) pose.rot = rotFromMatrix(tm.flat())
+      const lm = det.allLandmarks
+      if (lm[468] && lm[473]) head3d = head3dOf(tm, ((lm[468].x + lm[473].x) / 2) * vw, ((lm[468].y + lm[473].y) / 2) * vh, vw, vh)
       expr = this.exprOf(det)
     }
-    this.hooks.frame({ t, features, face: !!features, blink, headZ, faceBox, pose, expr })
+    this.hooks.frame({ t, features, face: !!features, blink, headZ, faceBox, pose, expr, head3d })
   }
 
   /**
@@ -242,6 +249,7 @@ export class WebcamSource {
     return {
       blink: b ? Math.max(b.eyeBlinkLeft, b.eyeBlinkRight) : 0,
       mouth: Math.min(1, gap / faceH / 0.18),
+      brow: b ? Math.min(1, b.browInnerUp * 0.6 + (b.browOuterUpLeft + b.browOuterUpRight) * 0.3) : 0,
       // 虹膜在画面里偏右 = 人往自己左边看 = 镜子里往左
       lookX: clamp1((0.5 - u) * 5),
       lookY: clamp1((v - 0.5) * 4)

@@ -6,6 +6,7 @@ import { keywordNear, refreshMagnet, sameMagnet, type Magnet } from '../focus/ma
 import { magnetNow, snapParams } from '../focus/snap'
 import { unionBox } from '../focus/types'
 import { boundsStore, clientToScreen, screenToClient, settingsStore, uiStore } from '../appState'
+import { input } from '../input/joycon'
 import { GazeBlob, type BlobTarget } from './blob'
 
 // 主窗口里的视线光环 + 焦点高亮
@@ -114,15 +115,22 @@ function createTargetSource(): () => BlobTarget {
 export function GazeLayer(): React.JSX.Element | null {
   const ui = useStore(uiStore)
   const f = useStore(focus.state)
+  useStore(input.status)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  // 光环自己跑 rAF 物理和绘制，不走 React 渲染
+  // 光环自己跑 rAF 物理和绘制，不走 React 渲染；颜色跟着视线侧走：左边电光蓝、右边电光红（和两只 Joy-Con 一样）
   useEffect(() => {
     const cv = canvasRef.current
     if (!cv) return
     const blob = new GazeBlob(cv, createTargetSource())
+    const syncColor = () => blob.setColor(uiStore.get().side === 'right' ? [255, 60, 40] : [10, 185, 230])
+    syncColor()
+    const off = uiStore.subscribe(syncColor)
     blob.start()
-    return () => blob.stop()
+    return () => {
+      off()
+      blob.stop()
+    }
   }, [])
 
   // 任何滚动都要重算高亮框
@@ -149,7 +157,8 @@ export function GazeLayer(): React.JSX.Element | null {
   const hidden = ui.showCalibration || ui.capturing
 
   return (
-    <div className="gaze-layer" style={{ display: hidden ? 'none' : undefined }}>
+    // 手柄都放在桌上（多半在用键盘鼠标）：光环淡下去，拿起手柄就恢复
+    <div className={`gaze-layer${input.allResting() ? ' joy-rest' : ''}`} style={{ display: hidden ? 'none' : undefined }}>
       {f.sel?.space === 'client' &&
         f.sel.rects.map((r, i) => (
           <div

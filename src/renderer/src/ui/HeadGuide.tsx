@@ -4,9 +4,11 @@ import { gaze, type FaceExpr, type HeadPos } from '../gaze/engine'
 import { adviseHead, headAdviceStore, type HeadAdvice } from '../gaze/headGuide'
 import { uiStore, rumble, settingsStore, updateSettings, toast } from '../appState'
 import { avatarStore } from '../avatar/avatar'
+import { AvatarGL } from '../avatar/AvatarGL'
 import { Icon } from './Icon'
 
-// 实时小人：一直待在屏幕角落的「小镜子」。你的卡通形象跟着你的头实时动（挪位置、远近、歪头、转头、点头、眨眼），
+// 实时小人：一直待在屏幕角落的「小镜子」。你的卡通形象跟着你的头实时动（挪位置、远近、歪头、转头、点头、眨眼、张嘴），
+// 生成过卡通形象的用 2.5D 网格画（avatar/AvatarGL.tsx：真转过去、眼珠会瞟、头发会甩），
 // 虚线圈是校准时头的位置；一偏就告诉你往哪挪，偏了超过 1.2 秒震一下手柄、给出「就在这儿重新校准」。
 // 形象是拍大头照后图生图画的，还没拍就先用内置的默认小人；默认待在右边回答区的右上角（不挡左边正在读的内容），可以拖到任何地方
 // 输入源是 iPhone 原深感时，头的三维位姿来自手机；几何换算会补偿头动，所以只在偏得很多时才提醒（阈值放宽 3 倍）
@@ -22,6 +24,8 @@ const VIEW = 0.9
 const HEAD_K = 1.55
 /** 原深感提醒阈值的放宽倍数 */
 const TD_SLACK = 3
+/** 摄像头开着头动补偿时的放宽倍数（补偿靠 MediaPipe 估的头姿，没原深感准，只放宽一倍） */
+const HEADCOMP_SLACK = 2
 
 type Phase = 'nocam' | 'nocal' | 'lost' | 'off' | 'good'
 
@@ -62,6 +66,8 @@ export function HeadGuide(): React.JSX.Element | null {
   const [advice, setAdvice] = useState<HeadAdvice | null>(null)
   const [loud, setLoud] = useState(false)
   const [menu, setMenu] = useState(false)
+  /** 2.5D 小人起来了：转头、眨眼它自己画，外面的容器就不再整张转 */
+  const [glMode, setGlMode] = useState(false)
   const [, setTick] = useState(0)
   const offSince = useRef(0)
   const okSince = useRef(0)
@@ -75,7 +81,7 @@ export function HeadGuide(): React.JSX.Element | null {
   const td = st.source === 'truedepth'
   const running = st.state === 'running'
   const calibrated = st.calibrated && !!ref
-  const slack = td ? TD_SLACK : 1
+  const slack = td ? TD_SLACK : st.headComp ? HEADCOMP_SLACK : 1
 
   useEffect(() => {
     if (!running) {
@@ -185,17 +191,17 @@ export function HeadGuide(): React.JSX.Element | null {
   const text: Record<Phase, [string, string]> = td
     ? {
         nocam: ['iPhone 没连上', st.link?.state === 'unpaired' ? '到设置 → 眼动 输入配对码' : '打开手机上的 Glint Eye'],
-        nocal: ['还没校准', '原深感校准一次就行，头动会自动补偿'],
+        nocal: ['还没校准', '原深感校准一次就行，之后头动了视线也准'],
         lost: ['手机看不到你的脸', '前置镜头对着脸，别挡住'],
         off: [advice?.main || '偏得有点多', advice?.sub || '回到手机镜头前面'],
-        good: ['位置正好', '原深感会补偿头动，放松坐']
+        good: ['位置正好', '头动了视线也准，放松坐']
       }
     : {
         nocam: ['摄像头没开', '点一下打开'],
         nocal: ['还没校准', '校准后我会记住你坐的位置'],
         lost: ['看不到你的脸', '回到摄像头正前方，脸完整露出来'],
-        off: [advice?.main || '偏了', advice?.sub || '回到虚线圈里'],
-        good: ['位置正好', '和校准时一致，视线会准']
+        off: [advice?.main || '偏了', advice?.sub || (st.headComp ? '偏太多了，视线会不准' : '回到虚线圈里')],
+        good: ['位置正好', st.headComp ? '头稍微动一动，视线照样准' : '和校准时一致，视线会准']
       }
   const [main, sub] = text[phase]
   const genSec = av.busy ? Math.round((Date.now() - av.since) / 1000) : 0
@@ -253,10 +259,10 @@ export function HeadGuide(): React.JSX.Element | null {
             height: D,
             left: hx - D / 2,
             top: hy - D / 2,
-            transform: `perspective(240px) rotateY(${yaw.toFixed(1)}deg) rotateX(${pitch.toFixed(1)}deg) rotate(${roll.toFixed(1)}deg)`
+            transform: glMode && av.img ? undefined : `perspective(240px) rotateY(${yaw.toFixed(1)}deg) rotateX(${pitch.toFixed(1)}deg) rotate(${roll.toFixed(1)}deg)`
           }}
         >
-          {av.img ? <img src={av.img} alt="我的小人" draggable={false} /> : <DefaultBuddy expr={phase === 'lost' ? null : expr} />}
+          {av.img ? <AvatarGL src={av.img} size={D} onMode={setGlMode} /> : <DefaultBuddy expr={phase === 'lost' ? null : expr} />}
           {av.busy && <span className="buddy-spin" />}
         </div>
         <button className="buddy-more" title="小人菜单" onClick={() => setMenu((m) => !m)}>
@@ -289,7 +295,7 @@ export function HeadGuide(): React.JSX.Element | null {
           <i />
           {main}
         </div>
-        <div className="buddy-sub">{av.busy ? `小人生成中… ${genSec}s（一般 40～60 秒）` : sub}</div>
+        <div className="buddy-sub">{av.busy ? `小人生成中… ${genSec}s（一般半分钟）` : sub}</div>
         {loud && phase === 'off' && (
           <div className="buddy-actions">
             <button className="btn sm" onClick={() => uiStore.patch({ showCalibration: true, calibrationKind: 'full' })}>

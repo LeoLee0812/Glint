@@ -14,14 +14,16 @@ import {
 import { join, basename, extname, normalize } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { readFileSync, writeFileSync } from 'node:fs'
-import type { LlmRequest, Provider, Settings, JevQuestion, Rect } from '../shared/types'
+import type { LlmRequest, Provider, Settings, JevQuestion, Rect, TrayStatus } from '../shared/types'
 import { loadSettings, saveSettings, JEV_PRESETS } from './settings'
 import { startStream, abortStream, listModels, testProvider } from './llm'
 import { judge, jevUsage, flushJev } from './jev'
 import { startBridge, stopBridge, onBridge, sendBridge } from './bridge'
 import { createPty, writePty, resizePty, killPty, killAllPty } from './pty'
+import { qwenCodeEnv } from './qwenCode'
 import { generateAvatar, loadAvatar, clearAvatar } from './avatar'
 import { initTrueDepth, tdEnable, tdPair, tdUnpair, tdStatus, displayInfo } from './truedepth'
+import { initTray, setTrayStatus, refreshTray, destroyTray } from './tray'
 
 app.setName('Glint')
 // 改名前叫 LookAsk：用户数据（设置、校准、小人、配对）继续放在老目录，改名不丢数据
@@ -122,8 +124,11 @@ function createMainWindow(): void {
   for (const ev of ['move', 'resize', 'moved', 'enter-full-screen', 'leave-full-screen', 'show'] as const) {
     win.on(ev as any, pushBounds)
   }
+  win.on('show', refreshTray)
+  win.on('hide', refreshTray)
   win.on('closed', () => {
     win = null
+    refreshTray()
   })
   if (isDev) {
     win.webContents.on('console-message', (e: any) => {
@@ -135,6 +140,12 @@ function createMainWindow(): void {
     return { action: 'deny' }
   })
   loadRenderer(win, 'index')
+}
+
+function showWindow(): void {
+  if (!win) return createMainWindow()
+  win.show()
+  win.focus()
 }
 
 // ---------- 校准模式：窗口铺满整块屏幕（盖住菜单栏和程序坞），校准点才能用屏幕坐标 ----------
@@ -176,9 +187,10 @@ function registerIpc(): void {
   ipcMain.handle('jev:judge', (_e, state: string, questions: Record<string, JevQuestion>) => judge(state, questions))
   ipcMain.handle('jev:usage', () => jevUsage())
 
-  ipcMain.handle('pty:create', (_e, opts: { cols: number; rows: number; cwd?: string }) =>
-    createPty({ ...opts, shell: loadSettings().terminal.shell, cwd: opts.cwd || loadSettings().terminal.cwd }, send)
-  )
+  ipcMain.handle('pty:create', (_e, opts: { cols: number; rows: number; cwd?: string }) => {
+    const s = loadSettings()
+    return createPty({ ...opts, shell: s.terminal.shell, cwd: opts.cwd || s.terminal.cwd, env: qwenCodeEnv(s) }, send)
+  })
   ipcMain.on('pty:write', (_e, id: string, data: string) => writePty(id, data))
   ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) => resizePty(id, cols, rows))
   ipcMain.on('pty:kill', (_e, id: string) => killPty(id))
@@ -206,6 +218,7 @@ function registerIpc(): void {
     win?.show()
     win?.focus()
   })
+  ipcMain.on('tray:status', (_e, st: TrayStatus) => setTrayStatus(st))
 
   // iPhone 原深感：开关监听、配对、状态、显示器物理尺寸
   ipcMain.handle('td:enable', (_e, reason: 'source' | 'pairing', on: boolean) => tdEnable(reason, on))
@@ -299,6 +312,12 @@ if (!app.requestSingleInstanceLock()) {
     // 测试用：LOOKASK_NO_BRIDGE=1 不拉原生助手，免得和正在用的 LookAsk 抢手柄
     if (!process.env.LOOKASK_NO_BRIDGE) startBridge()
     createMainWindow()
+    initTray({
+      showWindow,
+      toggleWindow: () => (win?.isVisible() ? win.hide() : showWindow()),
+      windowVisible: () => !!win?.isVisible(),
+      command: (c) => send('tray:command', c)
+    })
     // 先把系统摄像头授权弹出来，渲染进程再开摄像头就不会卡住（假摄像头用不到真摄像头，不弹）
     const fakeCam = !!(process.env.LOOKASK_FAKE_CAM || process.env.LOOKASK_FAKE_CAM_FILE)
     if (!fakeCam && systemPreferences.getMediaAccessStatus('camera') !== 'granted') {
@@ -315,6 +334,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('before-quit', () => {
+    destroyTray()
     flushJev()
     killAllPty()
     stopBridge()

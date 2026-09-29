@@ -12,7 +12,9 @@ import type {
   LlmRequest,
   Provider,
   Rect,
-  Settings
+  Settings,
+  TrayCommand,
+  TrayStatus
 } from '../shared/types'
 
 // 渲染进程能用的全部能力都从这里过，渲染进程本身拿不到 Node
@@ -62,6 +64,11 @@ const api = {
     capture: (rect: Rect): Promise<string | null> => ipcRenderer.invoke('win:capture', rect),
     focus: () => ipcRenderer.send('win:focus')
   },
+  tray: {
+    /** 菜单栏图标显示的状态 */
+    status: (s: TrayStatus) => ipcRenderer.send('tray:status', s),
+    onCommand: (fn: (c: TrayCommand) => void) => on('tray:command', fn)
+  },
   truedepth: {
     /** 开 / 关收包：source = 选了原深感输入源，pairing = 设置里正在配对 */
     enable: (reason: 'source' | 'pairing', on: boolean): Promise<TdStatus> => ipcRenderer.invoke('td:enable', reason, on),
@@ -74,7 +81,7 @@ const api = {
   },
   avatar: {
     get: (): Promise<string | null> => ipcRenderer.invoke('avatar:get'),
-    /** 大头照 → 卡通小人，约 40～60 秒 */
+    /** 大头照 → 卡通小人，约半分钟 */
     generate: (photo: string): Promise<{ dataUrl: string; ms: number } | { error: string }> => ipcRenderer.invoke('avatar:generate', photo),
     clear: (): Promise<void> => ipcRenderer.invoke('avatar:clear')
   },

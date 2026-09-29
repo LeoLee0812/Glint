@@ -45,7 +45,7 @@ export function takeHeadshot(size = 768): string | null {
   return cv.toDataURL('image/png')
 }
 
-/** 大头照 → 卡通小人（约 40～60 秒）；生成期间可以关掉拍照窗口，画好了会提示 */
+/** 大头照 → 卡通小人（约半分钟）；生成期间可以关掉拍照窗口，画好了会提示 */
 export async function generateAvatar(photo: string): Promise<boolean> {
   if (avatarStore.get().busy) return false
   avatarStore.patch({ busy: true, since: Date.now(), error: null })

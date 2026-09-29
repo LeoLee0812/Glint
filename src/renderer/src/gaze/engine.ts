@@ -8,10 +8,11 @@ import type { GazeFrame, GazeSample, GazeStatus, SourceFrame } from './types'
 import { WebcamSource } from './sources/webcam'
 import { TrueDepthSource } from './sources/truedepth'
 import { fitTd, predictTd, type TdModel } from './td/model'
+import { reproject, smoothHead, type Head3D, type ScreenGeo } from './headmotion'
 
 // 眼动引擎：输入源 → 特征 → 校准模型映射到屏幕坐标 → 漂移校正 → One Euro 平滑 → 注视检测
 // 输入源两种（gaze/sources/）：
-// - Mac 摄像头：MediaPipe 人脸 478 点 → RealEye 特征 → 岭回归
+// - Mac 摄像头：MediaPipe 人脸 478 点 → RealEye 特征 → 岭回归 → 按三维头姿重新投影（头动补偿，见 headmotion.ts）
 // - iPhone 原深感：头的三维位姿 + 双眼朝向 → 视线和屏幕平面求交 → 几何校准（头挪、歪、前后动都不偏）
 // 两种源的校准模型分开存，切来切去不用重校。输出统一用「屏幕坐标（点）」，谁用谁自己换算到窗口坐标。
 
@@ -37,10 +38,13 @@ class GazeEngine {
     driftPx: 0,
     dark: false,
     source: 'webcam',
-    link: null
+    link: null,
+    headComp: false
   })
   /** 当前头位置和校准时的头位置，给「往前 / 往后 / 往左…」的提醒和实时小人用；expr = 眨眼、张嘴、眼珠方向 */
   pose = createStore<{ cur: HeadPos | null; ref: HeadPos | null; expr: FaceExpr | null }>({ cur: null, ref: null, expr: null })
+  /** 每一帧的原始头姿和表情（不平滑、不通知订阅者）：实时小人在自己的动画循环里读，自己做弹簧平滑 */
+  readonly live: { pose: HeadPos | null; expr: FaceExpr | null; t: number } = { pose: null, expr: null, t: 0 }
   events = new Emitter<{
     frame: GazeFrame
     sample: GazeSample
@@ -59,6 +63,10 @@ class GazeEngine {
   private model: RidgeModel | null = null
   private ridgeScale: number | null = null
   private ridgeRef: HeadPos | null = null
+  /** 摄像头模型校准时的三维坐姿和屏幕几何（头动补偿用；老模型没有，要重新校准一次） */
+  private ridgeHead: { ref: Head3D; geo: ScreenGeo } | null = null
+  /** 这一帧的三维头姿 */
+  private curHead: Head3D | null = null
   private tdModel: TdModel | null = null
   private tdRef: HeadPos | null = null
 
@@ -91,6 +99,16 @@ class GazeEngine {
       }
     )
     this.loadModels()
+    // 设置里开关头动补偿：状态跟着变
+    settingsStore.subscribe(() => {
+      const on = this.headCompActive()
+      if (this.status.get().headComp !== on) this.status.patch({ headComp: on })
+    })
+  }
+
+  /** 头动补偿正在起作用：摄像头输入源 + 模型带着校准坐姿 + 设置没关 */
+  headCompActive(): boolean {
+    return this.kind === 'webcam' && !!this.model && !!this.ridgeHead && settingsStore.get().s?.gaze.headComp !== false
   }
 
   /** 摄像头画面（校准预览、拍大头照用；输入源是原深感时只有借用期间才有画面） */
@@ -187,6 +205,9 @@ class GazeEngine {
     const t = f.t
     this.frameCount++
     if (f.face && f.pose) {
+      this.live.pose = f.pose
+      this.live.expr = f.expr
+      this.live.t = t
       this.lastFaceAt = t
       this.scales.push(f.pose.w)
       if (this.scales.length > 30) this.scales.shift()
@@ -203,6 +224,8 @@ class GazeEngine {
     } else if (this.poseEma && t - this.lastFaceAt > 600) {
       this.poseEma = null
       this.exprEma = null
+      this.live.pose = null
+      this.live.expr = null
       this.pose.patch({ cur: null, expr: null })
     }
     const face = !!f.features && f.face
@@ -213,7 +236,9 @@ class GazeEngine {
       this.status.patch({ faceScale: Math.round(avg * 1000) / 1000 })
     }
 
-    this.events.emit('frame', { t, features: f.features, face, blink: f.blink, headZ: f.headZ, faceBox: f.faceBox, pose: f.pose })
+    // 头姿抹平（约 100 毫秒）：头比眼珠慢得多，抖动却会原样搬到视线上
+    this.curHead = f.head3d ? smoothHead(this.curHead, f.head3d, 0.3) : null
+    this.events.emit('frame', { t, features: f.features, face, blink: f.blink, headZ: f.headZ, faceBox: f.faceBox, pose: f.pose, head3d: f.head3d })
 
     // 闭眼那几帧眼部数据是废的，直接跳过，保持上一次的视线
     const blinking = f.blink > 0.45
@@ -243,7 +268,14 @@ class GazeEngine {
 
   private predict(features: Float64Array): { x: number; y: number } | null {
     if (this.kind === 'truedepth') return this.tdModel ? predictTd(this.tdModel, features) : null
-    return this.model ? predictRidge(this.model, features) : null
+    if (!this.model) return null
+    const p = predictRidge(this.model, features)
+    const h = this.ridgeHead
+    if (!h || !this.curHead || !this.headCompActive()) return p
+    const q = reproject(p, h.ref, this.curHead, h.geo)
+    // 头姿偶尔估得离谱（半张脸出画面）：挪得太远就不信它
+    const d = boundsStore.get().display
+    return Math.hypot(q.x - p.x, q.y - p.y) < d.width * 0.6 ? q : p
   }
 
   /** 最近一段时间（毫秒）原始预测的平均值，未加漂移校正 */
@@ -287,6 +319,8 @@ class GazeEngine {
           const ref = JSON.parse(localStorage.getItem(MODEL_KEY + '.pose') || 'null') as HeadPos | null
           // 老版本只存了脸宽，那就只能提醒前后
           this.ridgeRef = ref ?? (sc > 0 ? { cx: NaN, cy: NaN, w: sc } : null)
+          const head = JSON.parse(localStorage.getItem(MODEL_KEY + '.head3d') || 'null')
+          this.ridgeHead = head?.ref?.r?.length === 9 && head.geo?.k > 0 ? head : null
         }
       }
     } catch {
@@ -310,11 +344,11 @@ class GazeEngine {
   private applyModelStatus(): void {
     if (this.kind === 'truedepth') {
       const m = this.tdModel
-      this.status.patch({ calibrated: !!m, cvErrorPx: m?.cvErrorPx ?? null, calibFaceScale: this.tdRef?.w ?? null })
+      this.status.patch({ calibrated: !!m, cvErrorPx: m?.cvErrorPx ?? null, calibFaceScale: this.tdRef?.w ?? null, headComp: false })
       this.pose.patch({ ref: m ? this.tdRef : null })
     } else {
       const m = this.model
-      this.status.patch({ calibrated: !!m, cvErrorPx: m?.cvErrorPx ?? null, calibFaceScale: m ? this.ridgeScale : null })
+      this.status.patch({ calibrated: !!m, cvErrorPx: m?.cvErrorPx ?? null, calibFaceScale: m ? this.ridgeScale : null, headComp: this.headCompActive() })
       this.pose.patch({ ref: m ? this.ridgeRef : null })
     }
   }
@@ -327,14 +361,16 @@ class GazeEngine {
     this.applyModelStatus()
   }
 
-  setModel(m: RidgeModel, faceScale: number | null, pose: HeadPos | null = null): void {
+  setModel(m: RidgeModel, faceScale: number | null, pose: HeadPos | null = null, head: { ref: Head3D; geo: ScreenGeo } | null = null): void {
     this.model = m
     this.ridgeScale = faceScale
     this.ridgeRef = pose
+    this.ridgeHead = head
     try {
       localStorage.setItem(MODEL_KEY, JSON.stringify(m))
       localStorage.setItem(MODEL_KEY + '.scale', String(faceScale ?? ''))
       localStorage.setItem(MODEL_KEY + '.pose', JSON.stringify(pose))
+      localStorage.setItem(MODEL_KEY + '.head3d', JSON.stringify(head))
     } catch {
       /* 存不下就只在本次会话有效 */
     }
@@ -360,7 +396,9 @@ class GazeEngine {
       localStorage.removeItem(TD_MODEL_KEY)
     } else {
       this.model = null
+      this.ridgeHead = null
       localStorage.removeItem(MODEL_KEY)
+      localStorage.removeItem(MODEL_KEY + '.head3d')
     }
     this.applyModelStatus()
   }
@@ -383,7 +421,12 @@ class GazeEngine {
   }
 
   /** 用校准数据拟合当前输入源的模型并启用；返回交叉验证误差 */
-  async calibrate(input: FitInput, faceScale: number | null, pose: HeadPos | null): Promise<{ cv: number | null; ms: number; note?: string }> {
+  async calibrate(
+    input: FitInput,
+    faceScale: number | null,
+    pose: HeadPos | null,
+    head: { ref: Head3D; geo: ScreenGeo } | null = null
+  ): Promise<{ cv: number | null; ms: number; note?: string }> {
     if (this.kind === 'truedepth') {
       const t0 = performance.now()
       await this.td.refreshDisplay()
@@ -407,23 +450,24 @@ class GazeEngine {
       }
     }
     const { model, ms } = await this.fit(input)
-    this.setModel(model, faceScale, pose)
+    this.setModel(model, faceScale, pose, head)
     return { cv: model.cvErrorPx, ms }
   }
 
   /** 收集 ms 毫秒内的有效特征帧（有脸、没眨眼） */
-  collect(ms: number, onProgress?: (n: number) => void): Promise<{ rows: Float64Array[]; faceScale: number | null; poses: HeadPos[] }> {
+  collect(ms: number, onProgress?: (n: number) => void): Promise<{ rows: Float64Array[]; faceScale: number | null; poses: HeadPos[]; heads: Head3D[] }> {
     return new Promise((resolve) => {
       const rows: Float64Array[] = []
       const sc: number[] = []
       const poses: HeadPos[] = []
+      const heads: Head3D[] = []
       const t0 = performance.now()
       let done = false
       const finish = () => {
         if (done) return
         done = true
         off()
-        resolve({ rows, faceScale: sc.length ? sc.reduce((a, b) => a + b, 0) / sc.length : null, poses })
+        resolve({ rows, faceScale: sc.length ? sc.reduce((a, b) => a + b, 0) / sc.length : null, poses, heads })
       }
       const off = this.events.on('frame', (f) => {
         if (f.features && f.blink < 0.4) {
@@ -432,6 +476,7 @@ class GazeEngine {
             sc.push(f.pose.w)
             poses.push(f.pose)
           }
+          if (f.head3d) heads.push(f.head3d)
           onProgress?.(rows.length)
         }
         if (performance.now() - t0 >= ms) finish()

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store'
-import { uiStore, settingsStore, loadSettingsIntoStore, updateSettings, toast } from './appState'
+import { uiStore, settingsStore, loadSettingsIntoStore, updateSettings } from './appState'
 import { gaze } from './gaze/engine'
 import { TopBar } from './ui/TopBar'
 import { LeftPane } from './panes/LeftPane'
@@ -13,6 +13,7 @@ import { Toasts } from './ui/Toasts'
 import { HeadGuide } from './ui/HeadGuide'
 import { PhotoBooth } from './ui/PhotoBooth'
 import { loadAvatar } from './avatar/avatar'
+import { startOnboarding } from './onboarding'
 
 export default function App(): React.JSX.Element {
   const ui = useStore(uiStore)
@@ -21,20 +22,12 @@ export default function App(): React.JSX.Element {
   const dragging = useRef(false)
 
   useEffect(() => {
-    loadAvatar().catch(() => undefined)
-    loadSettingsIntoStore().then((st) => {
+    // 小人和设置都读完再决定要不要走首次引导（已经有小人的老用户不弹拍照）
+    Promise.all([loadAvatar().catch(() => undefined), loadSettingsIntoStore()]).then(([, st]) => {
       setRatio(st.leftRatio || 0.62)
       gaze.setSmoothing(st.gaze.smoothing)
       gaze.start(st.gaze.cameraId || undefined)
-      const chatProvider = st.providers.find((p) => p.id === st.chatModel.providerId)
-      if (!chatProvider?.apiKey) {
-        toast('还没配置大模型 Key：设置 → 模型服务', 'warn', { ttl: 8000, action: { label: '去设置', run: () => uiStore.patch({ showSettings: true }) } })
-      } else if (!gaze.isCalibrated()) {
-        toast('先做一次眼动校准（约 30 秒），视线才能对上屏幕', 'info', {
-          ttl: 9000,
-          action: { label: '开始校准', run: () => uiStore.patch({ showCalibration: true, calibrationKind: 'full' }) }
-        })
-      }
+      startOnboarding()
     })
   }, [])
 
@@ -78,10 +71,11 @@ export default function App(): React.JSX.Element {
       </main>
       <GazeLayer />
       <Calibration />
+      <HeadGuide />
+      {/* 拍照窗口在设置下面：拍照时发现没填 Key，设置叠在它上面填完再回来接着生成 */}
+      <PhotoBooth />
       <SettingsDialog />
       <JoyHelp />
-      <HeadGuide />
-      <PhotoBooth />
       <Toasts />
       {!s && <div className="boot">启动中…</div>}
     </div>

@@ -1,6 +1,8 @@
 import { input, type ButtonEvent } from './joycon'
+import { haptic, hapticCount, homeLight } from './haptics'
+import { wristStart, wristEnd, wristActive } from './wrist'
 import { focus, panes, switchSide, sideOfPane } from '../focus/focus'
-import type { Dir, PaneAdapter } from '../focus/types'
+import { GRAN_ORDER, type Dir, type PaneAdapter } from '../focus/types'
 import { gaze } from '../gaze/engine'
 import { ask, abort, chatStore, addNote, popFork } from '../chat/chatStore'
 import { activeDoc, cycleDoc } from '../panes/docs'
@@ -9,7 +11,7 @@ import { la, uiStore, settingsStore, updateSettings, toast, rumble, screenToClie
 import { onDwell, setSuggestHandler, setTerminalAlertHandler, setFactHandler, jevEnabled, looksLikePermissionPrompt, riskGate } from '../jev/jevBrain'
 import { docsStore } from '../panes/docs'
 
-// 按键路由：左手 Joy-Con 管左边（滚动、翻页、终端按键、对 Qwen Code 说话），
+// 按键路由：左手 Joy-Con 管左边（滚动、翻页、终端按键、对终端里的 Qwen Code 说话），
 // 右手 Joy-Con 管右边（微调焦点、解释/翻译/总结、按住问 AI）
 // − / + 决定视线跟哪一边：− 左边内容，+ 右边 AI 回答（右边问到的解释往下裂变出一个窗口）
 
@@ -41,24 +43,6 @@ function implicitCalibrate(): void {
   if (Math.hypot(target.x - pred.x, target.y - pred.y) < 320) gaze.addResidual(target, pred, 0.6)
 }
 
-function driftCorrect(): void {
-  if (!gaze.isCalibrated()) {
-    toast('还没校准：长按 −（或右上角「校准」）先做一次完整校准', 'warn')
-    return
-  }
-  const st = focus.state.get()
-  const target = st.mode === 'hard' ? focus.focusCenterScreen() : null
-  const pred = gaze.recentPrediction(500)
-  if (target && pred) {
-    gaze.addResidual(target, pred, 2)
-    toast(`漂移已校正：以焦点「${st.label}」为准`, 'ok')
-    rumble('done')
-    return
-  }
-  // 没有硬焦点：看屏幕中心的点做一次单点校正
-  uiStore.patch({ showCalibration: true, calibrationKind: 'drift' })
-}
-
 function toggleJev(): void {
   const s = settingsStore.get().s
   if (!s) return
@@ -71,12 +55,6 @@ function toggleJev(): void {
   updateSettings((x) => ({ ...x, jevMode: on }))
   toast(on ? 'Jev 模式开：先判断，再开口' : 'Jev 模式关', on ? 'jev' : 'info')
   rumble(on ? 'done' : 'soft', 'R')
-}
-
-function toggleAutoScroll(): void {
-  const on = !settingsStore.get().s?.gaze.autoScroll
-  updateSettings((x) => ({ ...x, gaze: { ...x.gaze, autoScroll: on } }))
-  toast(on ? '眼动翻页：开（盯着底部 2 秒自动往下翻）' : '眼动翻页：关', 'info')
 }
 
 // ---------- 语音 ----------
@@ -95,6 +73,8 @@ function startVoice(target: 'chat' | 'terminal'): void {
 function stopVoice(): void {
   if (!chatStore.get().asr.active) return
   la.bridge.send({ cmd: 'asr_stop' })
+  // 松开 = 发出去了：往下沉一下
+  haptic('send', asrTarget === 'terminal' ? 'L' : 'R')
 }
 
 la.bridge.onEvent((e) => {
@@ -127,19 +107,23 @@ la.bridge.onEvent((e) => {
 // ---------- 按键 ----------
 
 function onButton(e: ButtonEvent): void {
+  // 右摇杆松开 = 手腕精调结束；放在最前面，中途弹出校准 / 设置也要能收尾
+  if (e.btn === 'RS' && !e.down) wristEnd()
   const u = uiStore.get()
   if (u.showCalibration || u.showSettings || u.showHelp || u.showBooth) return
   const term = activeTerminal()
+  // 左手在终端里有动作 = Qwen Code 的事你已经在处理了，心跳提醒别再跳
+  if (term && e.down && ['Up', 'Down', 'Left', 'Right', 'ZL', 'Minus'].includes(e.btn)) stopNag()
 
   if (!e.down) {
     if (e.btn === 'ZR' || e.btn === 'ZL') stopVoice()
     const short = (e.heldMs ?? 0) < 650
     if (e.btn === 'Home' && short) la.win.toggleVisible()
-    // − 短按：视线切回左边；已经在左边时还是老功能（终端里 ⇧Tab，其余漂移校正）
+    // − 短按：视线切回左边；已经在左边时终端里当 ⇧Tab（Qwen Code 里轮换审批模式；− 不再管校准）
     if (e.btn === 'Minus' && short) {
       if (u.side !== 'left') switchSide('left')
       else if (term) term.write(KEYS.shiftTab)
-      else driftCorrect()
+      else toast('视线已经跟着左边的内容（+ 去右边）', 'info')
     }
     // + 短按：视线切到右边的 AI 回答
     if (e.btn === 'Plus' && short) {
@@ -150,7 +134,6 @@ function onButton(e: ButtonEvent): void {
   }
 
   if (e.long) {
-    if (e.btn === 'Minus') uiStore.patch({ showCalibration: true, calibrationKind: 'full' })
     if (e.btn === 'Plus') toggleJev()
     return
   }
@@ -181,25 +164,28 @@ function onButton(e: ButtonEvent): void {
       break
     case 'R':
       focus.cycleGran()
-      rumble('soft', 'R')
+      // 粒度用几下「咔」表示，不用看屏幕：词 1 下、句 2 下、段 3 下、节 4 下
+      hapticCount(GRAN_ORDER.indexOf(focus.state.get().gran) + 1, 'R')
       break
-    case 'RS':
+    case 'RS': {
+      // 按下 = 焦点跳到视线处；按住不放拧手腕 = 从这里逐词 / 逐行精调，松开落定（input/wrist.ts）
+      const g = gaze.status.get()
+      if (gaze.isCalibrated() && g.state === 'running' && !g.face) haptic('lost', 'R')
+      else rumble('soft', 'R')
       focus.snapToGaze(true)
-      rumble('soft', 'R')
+      if (e.source === 'joycon') wristStart()
       break
+    }
     case 'ZR':
       startVoice('chat')
       break
 
-    // ----- 左手：内容 -----
+    // ----- 左手：内容（左摇杆按下只在拍大头照窗口里当快门，PhotoBooth 自己接） -----
     case 'ZL':
       startVoice(term ? 'terminal' : 'chat')
       break
     case 'L':
       cycleDoc(1)
-      break
-    case 'LS':
-      toggleAutoScroll()
       break
     case 'Up':
     case 'Down':
@@ -224,7 +210,7 @@ function onButton(e: ButtonEvent): void {
 
 input.onButton(onButton)
 
-// ---------- 放行 Qwen Code：Jev 先评风险，危险操作要再按一次 ----------
+// ---------- 放行终端里的 Qwen Code：Jev 先评风险，危险操作要再按一次 ----------
 
 let pendingApprove = 0
 
@@ -250,7 +236,7 @@ async function approveInTerminal(term: TermHandle): Promise<void> {
     return
   }
   pendingApprove = Date.now()
-  rumble('alert', 'L')
+  haptic('danger', 'L')
   addNote(`⚠️ Jev 判断这个操作有风险（${r.reason}）。确定要放行，5 秒内再按一次十字键 →；不放行按 ← 打断`, [r.trace])
   toast(`⚠️ 有风险（${r.reason}）：5 秒内再按一次 → 才放行`, 'warn', { ttl: 5000 })
 }
@@ -285,8 +271,9 @@ function tick(t: number): void {
     }
     if (Math.abs(s.lx) < 0.3) pageArmed = true
 
-    // 右摇杆：一步一步挪焦点，按住会加速连发
-    const mag = Math.hypot(s.rx, s.ry)
+    // 右摇杆：一步一步挪焦点，按住会加速连发（连发时每步的「咔」越来越轻）；
+    // 按住右摇杆拧手腕时不算，按下去难免把摇杆带歪
+    const mag = wristActive() ? 0 : Math.hypot(s.rx, s.ry)
     if (mag > 0.5) {
       const dir: Dir = Math.abs(s.rx) > Math.abs(s.ry) ? (s.rx > 0 ? 'right' : 'left') : s.ry > 0 ? 'up' : 'down'
       if (dir !== repeatDir) {
@@ -296,7 +283,7 @@ function tick(t: number): void {
         nextRepeat = t + 380
       } else if (t >= nextRepeat) {
         repeatN++
-        focus.step(dir)
+        focus.step(dir, Math.max(0.5, 1 - repeatN * 0.05))
         nextRepeat = t + Math.max(55, 160 - repeatN * 14)
       }
     } else if (mag < 0.3) repeatDir = null
@@ -357,17 +344,70 @@ setSuggestHandler(({ text, trace, analysis }) => {
   void text
 })
 
-setTerminalAlertHandler(({ state, trace }) => {
-  const lookingAtTerm = focus.state.get().paneId?.startsWith('doc:') && activeDoc()?.kind === 'terminal'
+function lookingAtTerminal(): boolean {
+  return !!focus.state.get().paneId?.startsWith('doc:') && activeDoc()?.kind === 'terminal'
+}
+
+// 终端里的 Qwen Code 等你批准：左手柄「心跳」；没处理就每 10 秒再跳一次，最多再跳 2 次。
+// 左手在终端里按了键、看向终端、或者屏幕上的确认框没了，就不再跳
+let nagTimer: ReturnType<typeof setTimeout> | null = null
+
+function stopNag(): void {
+  if (nagTimer) clearTimeout(nagTimer)
+  nagTimer = null
+}
+
+function nag(left: number): void {
+  stopNag()
+  if (left <= 0) return
+  nagTimer = setTimeout(() => {
+    nagTimer = null
+    const waiting = [...terminals.values()].some((t) => looksLikePermissionPrompt(t.screenText()))
+    if (!waiting || lookingAtTerminal()) return
+    haptic('heartbeat', 'L')
+    nag(left - 1)
+  }, 10000)
+}
+
+setTerminalAlertHandler(({ state, trace, agent }) => {
   const text =
     state === 'waiting_permission'
-      ? '⏳ Qwen Code 在等你批准操作：十字键选选项，→ 放行（Jev 会先评风险）'
+      ? `⏳ ${agent} 在等你批准操作：十字键选选项，→ 放行（Jev 会先评风险）`
       : state === 'stuck'
-        ? '🔁 Qwen Code 好像在原地打转（同样的失败反复出现）：按 ← 打断，或按住 ZL 给它换个思路'
-        : '❓ Qwen Code 在问你问题：按住 ZL 直接说给它听'
+        ? `🔁 ${agent} 好像在原地打转（同样的失败反复出现）：按 ← 打断，或按住 ZL 给它换个思路`
+        : `❓ ${agent} 在问你问题：十字键选答案，或按住 ZL 直接说给它听`
   addNote(text, [trace])
-  if (!lookingAtTerm) {
-    rumble('alert', 'L')
-    toast(state === 'waiting_permission' ? 'Qwen Code 在等你拍板' : state === 'stuck' ? 'Qwen Code 可能卡住了' : 'Qwen Code 在问你问题', 'jev', { ttl: 6000 })
+  if (!lookingAtTerminal()) {
+    haptic(state === 'stuck' ? 'alert' : 'heartbeat', 'L')
+    if (state === 'waiting_permission') nag(2)
+    toast(state === 'waiting_permission' ? `${agent} 在等你拍板` : state === 'stuck' ? `${agent} 可能卡住了` : `${agent} 在问你问题`, 'jev', { ttl: 6000 })
   }
+})
+
+// ---------- 右手柄 HOME 灯 = AI 状态灯：在想 / 在出字时呼吸，答完（或停掉）就灭 ----------
+// 屏幕上配一个：从提问到出第一个字这段「思考」时间，<html> 挂 ai-thinking，右侧顶上那道线变成 Joy-Con 电光紫、跟着呼吸
+
+let aiBusy = false
+let aiThinking = false
+chatStore.subscribe(() => {
+  const st = chatStore.get()
+  const busy = !!st.busy
+  if (busy !== aiBusy) {
+    aiBusy = busy
+    homeLight(busy ? 'breathe' : 'off')
+  }
+  const thinking = busy && [...st.msgs, ...st.fork.map((c) => c.ans)].some((m) => m.status === 'streaming' && !m.text)
+  if (thinking !== aiThinking) {
+    aiThinking = thinking
+    document.documentElement.classList.toggle('ai-thinking', thinking)
+  }
+})
+
+// ---------- 眼动断了（iPhone 断开 / 摄像头出错）：两只手柄一起「长-短」 ----------
+
+let gazeState = gaze.status.get().state
+gaze.status.subscribe(() => {
+  const s = gaze.status.get().state
+  if (s === 'error' && gazeState === 'running') haptic('lost')
+  gazeState = s
 })

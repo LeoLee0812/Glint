@@ -30,6 +30,10 @@ export function formatContext(ctx: FocusContext): string {
   const lines: string[] = []
   const where = [ctx.docTitle && `《${ctx.docTitle}》`, SOURCE_LABEL[ctx.source], ctx.location].filter(Boolean).join(' · ')
   lines.push(`【用户正在看】${where}`)
+  if (ctx.scan) {
+    const what = ctx.scan.marked ? '那一行所在整段的高清截图（蓝框框住的那一行是焦点，其余只作上下文）' : `那一${ctx.scan.unit}的高清截图`
+    lines.push(`【焦点】这份 PDF 是扫描件，没有文字层、拿不到原文：附图就是用户盯着的${what}。先认准图里的字再回答，公式写成 LaTeX。`)
+  }
   if (ctx.origin) lines.push(`【这段回答当时在回应】${ctx.origin}`)
   if (ctx.selection) lines.push(`【焦点（${GRAN_LABEL[ctx.gran]}）】\n${ctx.selection}`)
   if (ctx.paragraph && ctx.paragraph !== ctx.selection) lines.push(`【所在段落】\n${ctx.paragraph}`)
@@ -37,13 +41,31 @@ export function formatContext(ctx: FocusContext): string {
   if (ctx.before) lines.push(`【上文】\n${ctx.before}`)
   if (ctx.after) lines.push(`【下文】\n${ctx.after}`)
   if (ctx.extra) lines.push(ctx.source === 'terminal' ? `【终端当前整屏】\n${ctx.extra}` : `【界面原文】\n${ctx.extra}`)
-  if (ctx.image) lines.push('【附图】用户盯着的区域截图已附上')
+  if (ctx.image && !ctx.scan) lines.push('【附图】用户盯着的区域截图已附上')
   return lines.join('\n\n')
 }
 
+/** 扫描件：焦点只有截图，按截的是什么（行 / 段 / 图表 / 公式 / 一整栏）换说法 */
+function scanExplain(unit: string): string {
+  switch (unit) {
+    case '行':
+      return '讲清蓝框里这一行在说什么：里面的术语、符号、公式各是什么意思，需要时结合整段。'
+    case '图表':
+      return '先一句话说这张图 / 表在展示什么，再讲清坐标轴、图例或各列的含义，最后说最关键的结论。'
+    case '公式':
+      return '先把公式用 LaTeX 写出来，再逐项说明每个符号，最后说它在这里起什么作用。'
+    case '栏':
+    case '页':
+      return `概括图里这一${unit}的主线：讲了什么问题、用了什么方法、得到什么结论。`
+    default:
+      return '用大白话讲清图里这一段在说什么：核心观点、关键概念、论证链条；读者最可能卡住的地方重点讲。'
+  }
+}
+
 function explainTask(g: Granularity, ctx: FocusContext): string {
+  if (ctx.scan) return scanExplain(ctx.scan.unit)
   if (ctx.source === 'terminal') {
-    return '这是终端（多半是 Qwen Code）里的输出。说清楚焦点这部分是什么意思：它在做什么、在问用户什么、有没有风险、用户下一步该怎么回应。'
+    return '这是终端（多半是 Qwen Code 这类编程智能体）里的输出。说清楚焦点这部分是什么意思：它在做什么、在问用户什么、有没有风险、用户下一步该怎么回应。'
   }
   switch (g) {
     case 'word':
@@ -94,10 +116,18 @@ function buildPromptInner(action: Action, ctx: FocusContext | null, question?: s
     case 'explain':
       return `${c}${ctx ? explainTask(ctx.gran, ctx) : '解释一下。'}`
     case 'translate': {
+      if (ctx?.scan) {
+        const what = ctx.scan.unit === '图表' ? '图 / 表里的文字（标题、坐标轴、图例、表头和单元格，按原来的结构列出）' : ctx.scan.marked ? '蓝框里那一行' : `这一${ctx.scan.unit}`
+        return `${c}把附图里${what}翻译出来：原文是中文就译成英文，其他语言译成中文。公式保留原样（写成 LaTeX），术语第一次出现保留原文括注；只给译文和必要的一两句注释，不要逐字解释。`
+      }
       const target = hasCJK(sel) ? '英文' : '中文'
       return `${c}把焦点内容翻译成${target}。术语第一次出现保留原文括注；只给译文和必要的一两句注释，不要逐字解释。`
     }
     case 'summarize':
+      if (ctx?.scan) {
+        const what = ctx.scan.marked ? '这一整段（不只蓝框那一行）' : `这一${ctx.scan.unit}`
+        return `${c}总结附图里${what}：3～5 条要点，每条一句话；最后用一句话说它在全文里可能起什么作用。`
+      }
       return `${c}总结焦点所在的${ctx && ctx.gran === 'section' ? '小节' : '段落'}：3～5 条要点，每条一句话；最后用一句话说它在全文里起什么作用。`
     case 'capture':
       return capturePrompt(ctx, question)
@@ -119,5 +149,6 @@ export function bubbleText(action: Action, ctx: FocusContext | null, question?: 
   const sel = (ctx?.selection || ctx?.paragraph || '').replace(/\s+/g, ' ')
   const short = sel.length > 40 ? sel.slice(0, 40) + '…' : sel
   if (action === 'capture') return ctx?.circle ? '看图：解释蓝圈里的内容' : '看图：这张图在讲什么'
+  if (ctx?.scan) return `${ACTION_LABEL[action]}「${ctx.scan.label || ctx.location}」（扫描件截图）`
   return `${ACTION_LABEL[action]}${short ? `「${short}」` : ''}`
 }

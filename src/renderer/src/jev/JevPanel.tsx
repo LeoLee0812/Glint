@@ -6,7 +6,7 @@ import { settingsStore } from '../appState'
 
 // Jev 面板：每一次「先判断」都摊开给你看——判断了什么、概率多少、花了多少 token
 
-const KIND: Record<string, string> = { block: '看段落', stuck: '卡住了吗', route: '提问路由', terminal: 'Qwen Code' }
+const KIND: Record<string, string> = { block: '看段落', stuck: '卡住了吗', route: '提问路由', terminal: '终端智能体' }
 
 export function JevPanel(): React.JSX.Element {
   const j = useStore(jevStore)

@@ -48,6 +48,9 @@ export class GazeBlob {
   private dpr = 1
   private cleared = true
   private t0 = performance.now()
+  /** 光环颜色（RGB）：视线跟左边是左手柄的电光蓝，跟右边是右手柄的电光红；换边时几帧内渐变过去 */
+  private rgb = [10, 185, 230]
+  private rgbTarget = [10, 185, 230]
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -70,6 +73,10 @@ export class GazeBlob {
   stop(): void {
     cancelAnimationFrame(this.raf)
     window.removeEventListener('resize', this.resize)
+  }
+
+  setColor(rgb: [number, number, number]): void {
+    this.rgbTarget = rgb
   }
 
   private resize = (): void => {
@@ -240,15 +247,17 @@ export class GazeBlob {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     const a = this.alpha
     const lockA = this.attract
+    for (let i = 0; i < 3; i++) this.rgb[i] += (this.rgbTarget[i] - this.rgb[i]) * 0.18
+    const col = this.rgb.map(Math.round).join(', ')
     this.tracePath()
     // 淡淡的内填充，吸住目标时稍微加深
-    ctx.fillStyle = `rgba(30, 170, 240, ${(0.04 + 0.06 * lockA) * a})`
+    ctx.fillStyle = `rgba(${col}, ${(0.04 + 0.06 * lockA) * a})`
     ctx.fill()
     // 外发光主描边
     ctx.lineJoin = 'round'
-    ctx.shadowColor = `rgba(30, 170, 240, ${0.6 * a})`
+    ctx.shadowColor = `rgba(${col}, ${0.6 * a})`
     ctx.shadowBlur = 14
-    ctx.strokeStyle = `rgba(30, 170, 240, ${0.9 * a})`
+    ctx.strokeStyle = `rgba(${col}, ${0.9 * a})`
     ctx.lineWidth = 6.5 - 3.5 * lockA
     ctx.stroke()
     // 描边中间一道白色高光，像玻璃边；包住词时描边变细，高光随之淡掉，免得看成两道线

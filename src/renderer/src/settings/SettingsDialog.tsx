@@ -10,6 +10,15 @@ import { MOUNT_LABEL } from '../gaze/td/mount'
 
 type Tab = 'providers' | 'models' | 'jev' | 'gaze' | 'misc'
 
+/** 实时小人能选的百炼图像编辑模型（第一个是默认） */
+const AVATAR_MODELS: Array<[string, string]> = [
+  ['qwen-image-3.0-pro', '千问图像 3.0 Pro（最快、最像）'],
+  ['qwen-image-3.0', '千问图像 3.0'],
+  ['qwen-image-2.0-pro', '千问图像 2.0 Pro'],
+  ['qwen-image-edit-max', '千问图像编辑 Max（更像盲盒公仔）'],
+  ['qwen-image-edit-plus', '千问图像编辑 Plus']
+]
+
 function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Provider) => void; onRemove: () => void }): React.JSX.Element {
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState('')
@@ -90,6 +99,11 @@ function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Pr
         <button className="btn sm ghost" onClick={fetchModels} disabled={!p.apiKey}>
           获取模型列表
         </button>
+        {p.console && (
+          <a className="btn sm ghost" href={p.console} target="_blank" rel="noreferrer">
+            去官网拿 Key ↗
+          </a>
+        )}
         <span className="small dim">{busy}</span>
       </div>
     </div>
@@ -385,7 +399,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                 <input type="checkbox" checked={draft.jevMode} onChange={(e) => set({ jevMode: e.target.checked })} />
                 开启 Jev 模式（长按右手柄 + 也能切）
               </label>
-              <p className="dim small">Jev 只判断不写字：段落难度、是否卡住、提问意图、Qwen Code 是否在等你批准。同样的内容命中本地缓存不重复花钱。</p>
+              <p className="dim small">Jev 只判断不写字：段落难度、是否卡住、提问意图、终端里的 Qwen Code 是否在等你批准。同样的内容命中本地缓存不重复花钱。</p>
             </div>
           )}
 
@@ -479,6 +493,16 @@ export function SettingsDialog(): React.JSX.Element | null {
                 <input type="checkbox" checked={draft.gaze.autoScroll} onChange={(e) => set({ gaze: { ...draft.gaze, autoScroll: e.target.checked } })} />
                 眼动翻页（盯着正文底部 2 秒自动下翻）
               </label>
+              {!td && (
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={draft.gaze.headComp !== false}
+                    onChange={(e) => set({ gaze: { ...draft.gaze, headComp: e.target.checked } })}
+                  />
+                  头动补偿：头挪一挪、转一转，视线照样准，不用坐回原位（打开后要重新校准一次）
+                </label>
+              )}
               <div className="row">
                 <button
                   className="btn sm"
@@ -503,33 +527,30 @@ export function SettingsDialog(): React.JSX.Element | null {
                 <input type="checkbox" checked={draft.avatar.show} onChange={(e) => set({ avatar: { ...draft.avatar, show: e.target.checked } })} />
                 在角落显示实时小人（跟着你的头动，坐偏了告诉你往哪挪）
               </label>
-              <label>
-                图生图服务（OpenAI 兼容的 images/edits）
-                <select value={draft.avatar.providerId} onChange={(e) => set({ avatar: { ...draft.avatar, providerId: e.target.value } })}>
-                  {draft.providers
-                    .filter((p) => p.kind === 'openai')
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.apiKey ? '' : '（缺 Key）'}
-                      </option>
-                    ))}
-                </select>
-              </label>
               <div className="row">
                 <label className="grow">
-                  模型
-                  <input value={draft.avatar.model} onChange={(e) => set({ avatar: { ...draft.avatar, model: e.target.value.trim() } })} />
+                  用哪个 Key（阿里云百炼）
+                  <select value={draft.avatar.providerId} onChange={(e) => set({ avatar: { ...draft.avatar, providerId: e.target.value } })}>
+                    {draft.providers
+                      .filter((p) => /aliyuncs\.com/.test(p.baseUrl))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.apiKey ? '' : '（缺 Key）'}
+                        </option>
+                      ))}
+                  </select>
                 </label>
-                <label>
-                  画质
-                  <select
-                    value={draft.avatar.quality}
-                    onChange={(e) => set({ avatar: { ...draft.avatar, quality: e.target.value as Settings['avatar']['quality'] } })}
-                  >
-                    <option value="low">低（快、便宜）</option>
-                    <option value="medium">中</option>
-                    <option value="high">高（慢）</option>
+                <label className="grow">
+                  模型
+                  <select value={draft.avatar.model} onChange={(e) => set({ avatar: { ...draft.avatar, model: e.target.value } })}>
+                    {(AVATAR_MODELS.some(([m]) => m === draft.avatar.model) ? AVATAR_MODELS : [[draft.avatar.model, draft.avatar.model], ...AVATAR_MODELS]).map(
+                      ([m, label]) => (
+                        <option key={m} value={m}>
+                          {label}
+                        </option>
+                      )
+                    )}
                   </select>
                 </label>
               </div>
@@ -550,7 +571,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                   </button>
                 )}
               </div>
-              <p className="dim small">照片只发给上面选的图生图服务，不存本地；生成的小人存在本机。默认用 OpenLux 中转的 gpt-image-2，一次约 40～60 秒。</p>
+              <p className="dim small">照片只发给阿里云百炼，不存本地；生成的小人存在本机。一次约半分钟。</p>
             </div>
           )}
 
@@ -568,6 +589,10 @@ export function SettingsDialog(): React.JSX.Element | null {
                 Shell
                 <input value={draft.terminal.shell} onChange={(e) => set({ terminal: { ...draft.terminal, shell: e.target.value } })} />
               </label>
+              <p className="dim small">
+                终端里点「启动 Qwen Code」会自动带上「千问 · 阿里云百炼」的 Key，默认模型 qwen3.8-max；进去后输入 /model 可换更便宜的 qwen3.7-plus / qwen3.8-flash。
+                你自己在 ~/.qwen/settings.json 里配了别的（Coding Plan / Token Plan），以你的为准。
+              </p>
             </div>
           )}
         </div>
