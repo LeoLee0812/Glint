@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'n
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings, Provider } from '../shared/types'
+import { defaultShell, isMac } from './platform'
 
-// 设置存在 ~/Library/Application Support/LookAsk/settings.json（权限 600，只有本人可读）
+// 设置存在 ~/Library/Application Support/LookAsk/settings.json（Windows 是 %APPDATA%\LookAsk\settings.json；权限 600，只有本人可读）
 // Key 只存本机，不进仓库
 
 /** 终端里的编程智能体从 Qwen Code 换成了 Qwen Code，老设置里存的默认提示词这一句跟着换（migrate） */
@@ -146,7 +147,7 @@ export function defaultSettings(): Settings {
     jev: { baseUrl: 'https://api.typesafe.ai', apiKey: '', model: 'jev-latest', dailyTokenCap: 60000 },
     jevMode: false,
     gaze: { source: 'webcam', tdMount: 'bottom', cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7, headComp: true },
-    terminal: { cwd: homedir(), shell: process.env.SHELL || '/bin/zsh' },
+    terminal: { cwd: homedir(), shell: defaultShell() },
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     leftRatio: 0.62,
     onboarded: false
@@ -188,6 +189,8 @@ export function loadSettings(): Settings {
       console.error('[settings] 读取失败，用默认值', e)
     }
   }
+  // iPhone 原深感只有 Mac 版有（手机把数据发给 Mac 上的原生助手）；从 Mac 拷过来的设置在别的平台上一律当摄像头
+  if (!isMac && s.gaze.source !== 'webcam') s.gaze = { ...s.gaze, source: 'webcam' }
   cache = s
   return s
 }

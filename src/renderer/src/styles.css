@@ -37,8 +37,9 @@
   --radius: 12px;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.02);
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', sans-serif;
-  --mono: 'SF Mono', ui-monospace, Menlo, 'PingFang SC', monospace;
+  /* Mac 的字体在前；Windows 上这些都没有，落到 Segoe UI（西文）+ 微软雅黑（中文）、Cascadia Mono / Consolas（等宽） */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --mono: 'SF Mono', ui-monospace, Menlo, 'Cascadia Mono', Consolas, 'PingFang SC', 'Microsoft YaHei UI', monospace;
   color-scheme: light;
 }
 
@@ -198,6 +199,11 @@ kbd {
   min-width: 0;
   position: relative;
   z-index: 5;
+}
+/* Windows：左边没有红绿灯，右上角是系统的最小化 / 最大化 / 关闭按钮（Window Controls Overlay，宽度从 env() 里取） */
+.platform-win32 .topbar {
+  padding-left: 14px;
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 10px);
 }
 .brand {
   display: flex;

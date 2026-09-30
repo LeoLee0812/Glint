@@ -5,6 +5,7 @@ import { settingsStore, updateSettings, uiStore, la, toast } from '../appState'
 import { gaze } from '../gaze/engine'
 import { avatarStore, clearAvatar } from '../avatar/avatar'
 import { MOUNT_LABEL } from '../gaze/td/mount'
+import { CAM_NAME, HAS_TRUEDEPTH, combo, isMac } from '../platform'
 
 // 设置：模型服务商（OpenAI 兼容 / Anthropic）增删改、三路模型分配、Jev 网关、眼动参数（输入源、iPhone 原深感配对）
 
@@ -401,16 +402,19 @@ export function SettingsDialog(): React.JSX.Element | null {
 
           {tab === 'gaze' && (
             <div className="form">
-              <label>
-                输入源
-                <select
-                  value={draft.gaze.source}
-                  onChange={(e) => set({ gaze: { ...draft.gaze, source: e.target.value as Settings['gaze']['source'] } })}
-                >
-                  <option value="webcam">Mac 摄像头</option>
-                  <option value="truedepth">iPhone 原深感</option>
-                </select>
-              </label>
+              {/* iPhone 原深感只有 Mac 版有，别的平台只有摄像头，不用选 */}
+              {HAS_TRUEDEPTH && (
+                <label>
+                  输入源
+                  <select
+                    value={draft.gaze.source}
+                    onChange={(e) => set({ gaze: { ...draft.gaze, source: e.target.value as Settings['gaze']['source'] } })}
+                  >
+                    <option value="webcam">{CAM_NAME}</option>
+                    <option value="truedepth">iPhone 原深感</option>
+                  </select>
+                </label>
+              )}
               {td ? (
                 <>
                   <label>
@@ -580,6 +584,11 @@ export function SettingsDialog(): React.JSX.Element | null {
                 Shell
                 <input value={draft.terminal.shell} onChange={(e) => set({ terminal: { ...draft.terminal, shell: e.target.value } })} />
               </label>
+              {!isMac && (
+                <p className="small dim">
+                  按住说话（ZR / ZL，键盘 {combo('V')}）在 Windows 上用阿里云百炼的 Fun-ASR 实时识别转文字，走「模型服务」里百炼的 Key，按说话时长计费。
+                </p>
+              )}
             </div>
           )}
         </div>

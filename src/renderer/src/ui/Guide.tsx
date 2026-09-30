@@ -14,6 +14,7 @@ import { KeyCap, Kbd, Diamond, sideOf } from './JoyKeys'
 import { JoyConArt } from './JoyConArt'
 import { Icon } from './Icon'
 import logoUrl from '../assets/logo.png'
+import { MOD, TALK_KEY, combo, isMac } from '../platform'
 
 // 新手引导的界面：前几步是居中的卡片（这时手柄按键只归引导），「试一试」是贴在左下角的小卡片，
 // 按键照常生效，做对一步勾一步
@@ -237,7 +238,11 @@ function JoyconStep({ setActions }: StepProps): React.JSX.Element {
           <ol className="guide-steps">
             <li>把两只 Joy-Con 从 Switch 上滑下来</li>
             <li>按住手柄侧面导轨上的小圆键，直到指示灯来回跑</li>
-            <li>在 Mac 的蓝牙设置里，点 Joy-Con 旁边的「连接」</li>
+            <li>
+              {isMac
+                ? '在 Mac 的蓝牙设置里，点 Joy-Con 旁边的「连接」'
+                : '在 Windows 设置 → 蓝牙和其他设备 → 添加设备 → 蓝牙里，点「Joy-Con (L)」「Joy-Con (R)」'}
+            </li>
           </ol>
           <button className="btn" onClick={() => la.perm.openSettings('bluetooth')}>
             打开蓝牙设置
@@ -473,13 +478,13 @@ function Coach({ keyboard }: { keyboard: boolean }): React.JSX.Element {
       id: 'pick',
       keys: keyboard ? (
         <>
-          <Kbd>⌥</Kbd>
+          <Kbd>{MOD}</Kbd>
           <Kbd>→</Kbd>
         </>
       ) : (
         <KeyCap k="RS" />
       ),
-      text: keyboard ? `按 ⌥ 加方向键，选中${ONE[unit0]}` : `推一下右摇杆，选中${ONE[unit0]}`
+      text: keyboard ? `按 ${MOD} 加方向键，选中${ONE[unit0]}` : `推一下右摇杆，选中${ONE[unit0]}`
     },
     {
       id: 'unit',
@@ -490,25 +495,25 @@ function Coach({ keyboard }: { keyboard: boolean }): React.JSX.Element {
       id: 'explain',
       keys: keyboard ? (
         <>
-          <Kbd>⌥</Kbd>
+          <Kbd>{MOD}</Kbd>
           <Kbd>↩</Kbd>
         </>
       ) : (
         <KeyCap k="A" lit />
       ),
-      text: keyboard ? '按 ⌥ 回车，让它解释' : '按 A，让它解释'
+      text: keyboard ? `按 ${combo('回车')}，让它解释` : '按 A，让它解释'
     },
     {
       id: 'voice',
       keys: keyboard ? (
         <>
-          <Kbd>⌥</Kbd>
-          <Kbd>空格</Kbd>
+          <Kbd>{MOD}</Kbd>
+          <Kbd>{TALK_KEY}</Kbd>
         </>
       ) : (
         <KeyCap k="ZR" />
       ),
-      text: keyboard ? '按住 ⌥ 空格说一句话，松开发送' : '按住 ZR 说一句话，松开发送'
+      text: keyboard ? (isMac ? '按住 ⌥ 空格说一句话，松开发送' : `按住 ${combo(TALK_KEY)} 说一句话，松开发送`) : '按住 ZR 说一句话，松开发送'
     }
   ]
   const ok = (id: string) => got.has(id) || now[id]

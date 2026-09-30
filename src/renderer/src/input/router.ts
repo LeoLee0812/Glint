@@ -1,5 +1,6 @@
 import { input, type ButtonEvent } from './joycon'
 import { haptic, hapticCount, homeLight } from './haptics'
+import { speechStart, speechStop, onSpeech } from './speech'
 import { wristStart, wristEnd, wristActive } from './wrist'
 import { focus, panes, switchSide, sideOfPane } from '../focus/focus'
 import { GRAN_ORDER, type Dir, type Granularity, type PaneAdapter } from '../focus/types'
@@ -80,29 +81,41 @@ function startVoice(target: 'chat' | 'terminal'): void {
   asrTarget = target
   asrTerminal = target === 'terminal' ? activeTerminal() : null
   chatStore.patch({ asr: { active: true, text: '', target } })
-  la.bridge.send({ cmd: 'asr_start', lang: 'zh-CN', target })
+  speechStart(target)
   rumble('soft', target === 'terminal' ? 'L' : 'R')
 }
 
 function stopVoice(): void {
   if (!chatStore.get().asr.active) return
-  la.bridge.send({ cmd: 'asr_stop' })
+  speechStop()
   // 松开 = 发出去了：往下沉一下
   haptic('send', asrTarget === 'terminal' ? 'L' : 'R')
 }
 
-la.bridge.onEvent((e) => {
-  if (e.t !== 'asr') return
+/** 语音出错时的提示和「去处理」按钮：系统设置的哪一页，或者 key = 设置里填百炼 Key 那页 */
+const ASR_TIPS: Record<string, [string, 'speech' | 'microphone' | 'key' | null]> = {
+  speech_denied: ['语音识别没开权限，去系统设置里给 Glint 打开', 'speech'],
+  mic_denied:
+    la.platform === 'darwin'
+      ? ['麦克风没开权限，去系统设置里给 Glint 打开', 'microphone']
+      : ['麦克风没开权限：设置 → 隐私和安全性 → 麦克风，打开「让桌面应用访问你的麦克风」', 'microphone'],
+  recognizer_unavailable: ['系统语音识别用不了，中文听写要先联网下载一次', null],
+  // Windows 走百炼云端识别（src/main/asrCloud.ts）
+  no_key: ['说话要用百炼的 Key 转文字，先在设置里填上', 'key'],
+  no_mic: ['没找到麦克风', null],
+  auth: ['百炼的 Key 不对，语音识别用不了', 'key'],
+  connect: ['连不上百炼的语音识别，看看网络和 Key', 'key'],
+  network: ['和百炼的连接断了，这句没听全', null],
+  timeout: ['百炼的语音识别没回音，再说一次试试', null]
+}
+
+onSpeech((e) => {
   if (e.state === 'partial') chatStore.patch({ asr: { ...chatStore.get().asr, text: e.text || '' } })
   else if (e.state === 'error') {
     chatStore.patch({ asr: { active: false, text: '', target: asrTarget } })
-    const tips: Record<string, [string, 'speech' | 'microphone' | null]> = {
-      speech_denied: ['语音识别没开权限，去系统设置里给 Glint 打开', 'speech'],
-      mic_denied: ['麦克风没开权限，去系统设置里给 Glint 打开', 'microphone'],
-      recognizer_unavailable: ['系统语音识别用不了，中文听写要先联网下载一次', null]
-    }
-    const [msg, pane] = tips[e.error || ''] || [`语音出错：${e.error}`, null]
-    toast(msg, 'error', { ttl: 8000, action: pane ? { label: '打开设置', run: () => la.perm.openSettings(pane) } : undefined })
+    const [msg, pane] = ASR_TIPS[e.error || ''] || [`语音出错：${e.error}`, null]
+    const run = pane === 'key' ? () => uiStore.patch({ showSettings: true, settingsTab: 'providers' }) : pane ? () => la.perm.openSettings(pane) : null
+    toast(msg, 'error', { ttl: 8000, action: run ? { label: pane === 'key' ? '去填 Key' : '打开设置', run } : undefined })
   } else if (e.state === 'final') {
     const text = (e.text || '').trim()
     chatStore.patch({ asr: { active: false, text: '', target: asrTarget } })

@@ -4,6 +4,7 @@ import { uiStore } from '../appState'
 import { input, type Btn } from '../input/joycon'
 import { openGuide } from '../onboarding'
 import { KeyCap, Kbd } from './JoyKeys'
+import { MOD, TALK_KEY } from '../platform'
 
 // 按键速查：左手管左边的内容，右手管右边的 AI。第一次用的人走新手引导，这里只当备查
 
@@ -84,24 +85,24 @@ export function JoyHelp(): React.JSX.Element | null {
         <div className="kh-kb">
           <b>没手柄时</b>
           <span>
-            <Kbd>⌥</Kbd>
+            <Kbd>{MOD}</Kbd>
             <Kbd>方向键</Kbd> 挪焦点
           </span>
           <span>
-            <Kbd>⌥</Kbd>
+            <Kbd>{MOD}</Kbd>
             <Kbd>↩</Kbd> 解释
           </span>
           <span>
-            <Kbd>⌥</Kbd>
+            <Kbd>{MOD}</Kbd>
             <Kbd>T</Kbd> 翻译
           </span>
           <span>
-            <Kbd>⌥</Kbd>
+            <Kbd>{MOD}</Kbd>
             <Kbd>S</Kbd> 总结
           </span>
           <span>
-            按住 <Kbd>⌥</Kbd>
-            <Kbd>空格</Kbd> 说话
+            按住 <Kbd>{MOD}</Kbd>
+            <Kbd>{TALK_KEY}</Kbd> 说话
           </span>
         </div>
         <div className="kh-actions">

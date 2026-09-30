@@ -7,7 +7,12 @@ import './input/router'
 import './input/clickCalibrate'
 // 菜单栏图标：推状态、收命令
 import './tray'
+// Windows 右上角系统按钮条跟着弹窗蒙层变暗
+import './titlebar'
 import './debug'
+
+// 平台写在 <html> 上，样式里按 .platform-win32 调（顶栏给右上角的窗口按钮让位）
+document.documentElement.classList.add(`platform-${window.lookask.platform}`)
 
 // 不用 StrictMode：开发模式下它会把副作用跑两遍，终端会被重复创建
 createRoot(document.getElementById('root')!).render(<App />)

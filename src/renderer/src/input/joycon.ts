@@ -1,6 +1,7 @@
 import type { BridgeEvent } from '../../../shared/types'
 import { createStore, Emitter } from '../store'
 import { la } from '../appState'
+import { TALK_CODE } from '../platform'
 
 // 输入层：把原生助手发来的 Joy-Con 原始报告解码成「虚拟按键」，键盘快捷键也映射到同一套按键
 // 上层（router）只关心「哪个键按下/抬起/长按」和摇杆当前值，不关心来源
@@ -161,6 +162,7 @@ class InputHub {
 
   // ---------- 键盘：没手柄时只留五个核心功能 ----------
   // ⌥ + 方向键 移焦点、⌥↩ 解释、⌥T 翻译、⌥S 总结、按住 ⌥空格 说话；Esc 等于 B。其余操作用鼠标点界面
+  // Windows 上 ⌥ 就是 Alt；按住说话改成 Alt+V（Alt+空格 会弹出窗口的系统菜单，见 platform.ts）
 
   private typingTarget(e: KeyboardEvent): boolean {
     const el = e.target as HTMLElement | null
@@ -175,7 +177,7 @@ class InputHub {
         case 'Enter': return 'A'
         case 'KeyT': return 'X'
         case 'KeyS': return 'Y'
-        case 'Space': return 'ZR'
+        case TALK_CODE: return 'ZR'
       }
     }
     return null

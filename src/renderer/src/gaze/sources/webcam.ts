@@ -100,7 +100,11 @@ export class WebcamSource {
       const notFound = e?.name === 'NotFoundError' || /not found/i.test(e?.message || '')
       this.hooks.status({
         state: 'error',
-        error: notFound ? '找不到摄像头。合着盖的话，可以拿 iPhone 当摄像头' : e?.message || String(e)
+        error: notFound
+          ? window.lookask.platform === 'darwin'
+            ? '找不到摄像头。合着盖的话，可以拿 iPhone 当摄像头'
+            : '找不到摄像头'
+          : winCamError(e) || e?.message || String(e)
       })
       this.listCameras().catch(() => undefined)
     } finally {
@@ -255,4 +259,12 @@ export class WebcamSource {
       lookY: clamp1((v - 0.5) * 4)
     }
   }
+}
+
+/** Windows 上摄像头打不开的两种常见情况翻成人话：一个摄像头同时只能给一个程序用；隐私设置里关了桌面应用的相机权限 */
+function winCamError(e: any): string | null {
+  if (window.lookask.platform !== 'win32') return null
+  if (e?.name === 'NotReadableError') return '摄像头被别的程序占着（会议软件、相机 App），关掉再点一下'
+  if (e?.name === 'NotAllowedError') return '相机权限没开：设置 → 隐私和安全性 → 相机，打开「让桌面应用访问相机」'
+  return null
 }

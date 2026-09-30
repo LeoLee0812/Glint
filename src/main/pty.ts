@@ -1,8 +1,10 @@
 import * as pty from 'node-pty'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { defaultShell, isWin, shellArgs } from './platform'
 
 // 左侧终端：node-pty 起一个登录 shell（会读 ~/.zprofile ~/.zshrc，所以 qwen / agent 命令都能找到）；
+// Windows 上是 PowerShell（node-pty 走 ConPTY）。
 // Qwen Code 要的百炼 Key 和默认设置由 qwenCode.ts 准备好，经 opts.env 带进来
 
 type Send = (channel: string, payload: unknown) => void
@@ -19,7 +21,7 @@ export function createPty(
   send: Send
 ): string {
   const id = `pty${seq++}`
-  const shell = opts.shell && existsSync(opts.shell) ? opts.shell : process.env.SHELL || '/bin/zsh'
+  const shell = opts.shell && existsSync(opts.shell) ? opts.shell : defaultShell()
   const cwd = opts.cwd && existsSync(opts.cwd) ? opts.cwd : homedir()
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) {
@@ -31,10 +33,11 @@ export function createPty(
   env.COLORTERM = 'truecolor'
   env.TERM_PROGRAM = 'Glint'
   if (!env.LANG) env.LANG = 'zh_CN.UTF-8'
-  // 从 Finder 双击启动时 PATH 很短，补上 Homebrew 常见路径兜底
-  env.PATH = ['/opt/homebrew/bin', '/usr/local/bin', env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'].join(':')
+  // 从 Finder 双击启动时 PATH 很短，补上 Homebrew 常见路径兜底；
+  // Windows 的 PATH 本来就是全的，而且环境变量名不分大小写（系统里叫 Path），再写一个 PATH 会变成两份
+  if (!isWin) env.PATH = ['/opt/homebrew/bin', '/usr/local/bin', env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'].join(':')
   Object.assign(env, opts.env)
-  const proc = pty.spawn(shell, ['-l'], {
+  const proc = pty.spawn(shell, shellArgs(shell), {
     name: 'xterm-256color',
     cols: Math.max(20, opts.cols),
     rows: Math.max(5, opts.rows),

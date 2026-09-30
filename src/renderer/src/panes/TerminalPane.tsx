@@ -6,8 +6,9 @@ import { la, settingsStore, toast, uiStore } from '../appState'
 import { panes } from '../focus/focus'
 import { createTerminalAdapter } from '../focus/terminalAdapter'
 import { judgeTerminal } from '../jev/jevBrain'
-import { AGENT } from './agent'
+import { AGENT, installCommand, QWEN_NOT_FOUND } from './agent'
 import type { Doc } from './docs'
+import { isMac } from '../platform'
 
 // 终端视图：node-pty 起登录 shell，一键启动 Qwen Code（命令 qwen，百炼 Key 由主进程带进环境变量）；
 // 手柄十字键 = 方向键 / 回车 / Esc，ZL 语音直接打字进来
@@ -48,7 +49,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
     const host = hostRef.current
     if (!host) return
     const term = new Terminal({
-      fontFamily: '"SF Mono", Menlo, "PingFang SC", monospace',
+      fontFamily: '"SF Mono", Menlo, "Cascadia Mono", Consolas, "PingFang SC", "Microsoft YaHei UI", monospace',
       fontSize: 13,
       lineHeight: 1.18,
       cursorBlink: true,
@@ -169,17 +170,23 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
       })
     }
     let installing = false
+    const shell = settingsStore.get().s?.terminal.shell || ''
     const check = () => {
       const t = termRef.current
-      if (installing || !t || !/command not found: qwen|qwen: command not found/.test(screenOf(t).split('\n').slice(-4).join('\n'))) return
+      // PowerShell 5.1 的报错有七八行，要往上多看几行
+      if (installing || !t || !QWEN_NOT_FOUND.test(screenOf(t).split('\n').slice(isMac ? -4 : -12).join('\n'))) return
       installing = true
-      run(`${AGENT.install}\r`)
+      run(`${installCommand(shell)}\r`)
       toast('还没装 Qwen Code，正在装，装好会自己启动', 'info', { ttl: 8000 })
     }
-    // shell 刚起来时 .zshrc 可能还没跑完，看两次
+    // shell 刚起来时 .zshrc 可能还没跑完，看两次；Windows 的 PowerShell 起得慢，再多看一次
     setTimeout(check, 1500)
     setTimeout(check, 4000)
+    if (!isMac) setTimeout(check, 8000)
   }
+
+  // cmd 没有 clear，要用 cls（PowerShell 两个都认）
+  const clearCmd = /(^|[\\/])cmd(\.exe)?$/i.test(settingsStore.get().s?.terminal.shell || '') ? 'cls' : 'clear'
 
   return (
     <div className="term-pane">
@@ -187,7 +194,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
         <button className="btn sm primary" onClick={startAgent}>
           启动 Qwen Code
         </button>
-        <button className="btn sm" onClick={() => run('clear\r')}>
+        <button className="btn sm" onClick={() => run(`${clearCmd}\r`)}>
           清屏
         </button>
         {exited && <span className="warn small">终端已退出，关掉这个标签重开一个</span>}

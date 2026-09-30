@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BridgeEvent, DisplayInfo, TdDeviceInfo, TdFrame, TdStatus } from '../shared/types'
 import { onBridge, sendBridge, requestBridge } from './bridge'
+import { displayMillimeters } from './displayWin'
 
 // iPhone 原深感：原生助手收 UDP 数据报 → 这里验签名、配对、按 seq 丢乱序旧帧 → 推给渲染进程
 // 配对：手机上显示 4 位码，Mac 上输入一次。码只用来算签名密钥，存在 userData/truedepth-devices.json（权限 600）
@@ -316,9 +317,15 @@ export function tdUnpair(dev: string): void {
 /** 窗口所在显示器的物理尺寸：原深感的几何换算要知道「每米多少点」 */
 export async function displayInfo(win: BrowserWindow | null): Promise<DisplayInfo> {
   const d = win && !win.isDestroyed() ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay()
-  const r = await requestBridge<{ w: number; h: number }>({ cmd: 'display_mm', display: d.id }, 2000)
   const ptW = d.bounds.width
   const ptH = d.bounds.height
+  if (process.platform === 'win32') {
+    // Windows：主进程自己读 EDID（原生助手只管手柄）；拿不到就按 100% 缩放 = 96 点/英寸猜
+    const mm = await displayMillimeters(d)
+    if (mm) return { id: d.id, mmW: mm.w, mmH: mm.h, ptW, ptH, measured: true }
+    return { id: d.id, mmW: (ptW * 25.4) / 96, mmH: (ptH * 25.4) / 96, ptW, ptH, measured: false }
+  }
+  const r = await requestBridge<{ w: number; h: number }>({ cmd: 'display_mm', display: d.id }, 2000)
   if (r && r.w > 50 && r.h > 30) return { id: d.id, mmW: r.w, mmH: r.h, ptW, ptH, measured: true }
   // 拿不到就按 Mac 常见密度猜（约 4.8 点/毫米）
   return { id: d.id, mmW: ptW / 4.8, mmH: ptH / 4.8, ptW, ptH, measured: false }

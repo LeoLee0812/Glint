@@ -4,7 +4,9 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BridgeEvent } from '../shared/types'
 
-// 拉起 Swift 原生助手 lookask-bridge，按行收发 JSON；挂了自动重启（退避到最多 10 秒）
+// 拉起原生助手，按行收发 JSON；挂了自动重启（退避到最多 10 秒）
+// - Mac：Swift 编的二进制 lookask-bridge（Joy-Con / 语音 / 原深感）
+// - Windows：native/win 用 esbuild 打成的 lookask-bridge.cjs（只管 Joy-Con），用 Electron 自带的 Node 跑（ELECTRON_RUN_AS_NODE）
 
 type Listener = (e: BridgeEvent) => void
 
@@ -17,9 +19,20 @@ const pending = new Map<number, (e: any) => void>()
 
 function binaryPath(): string {
   // 打包后在 Resources/bin 下；开发时在 native/bin 下
-  const packed = join(process.resourcesPath || '', 'bin', 'lookask-bridge')
+  const name = process.platform === 'win32' ? 'lookask-bridge.cjs' : 'lookask-bridge'
+  const packed = join(process.resourcesPath || '', 'bin', name)
   if (app.isPackaged && existsSync(packed)) return packed
-  return join(app.getAppPath(), 'native', 'bin', 'lookask-bridge')
+  return join(app.getAppPath(), 'native', 'bin', name)
+}
+
+/** 怎么拉起助手：Windows 上是个脚本，交给 Electron 自带的 Node 跑 */
+function spawnBridge(bin: string): ChildProcessWithoutNullStreams {
+  if (process.platform !== 'win32') return spawn(bin, [], { stdio: ['pipe', 'pipe', 'pipe'] })
+  return spawn(process.execPath, [bin], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    windowsHide: true
+  })
 }
 
 export function onBridge(fn: Listener): void {
@@ -47,7 +60,7 @@ export function startBridge(): void {
     return
   }
   stopping = false
-  child = spawn(bin, [], { stdio: ['pipe', 'pipe', 'pipe'] })
+  child = spawnBridge(bin)
   let buf = ''
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', (chunk: string) => {

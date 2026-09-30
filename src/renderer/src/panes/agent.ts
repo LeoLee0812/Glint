@@ -8,6 +8,15 @@ export const AGENT = {
   install: 'npm i -g @qwen-code/qwen-code@latest && qwen'
 }
 
+/** 装 Qwen Code 的命令按 shell 写：Windows PowerShell 5.1 不认 &&，用 ; 再拿 $? 判断装没装成 */
+export function installCommand(shell: string): string {
+  return /(^|[\\/])(pwsh|powershell)(\.exe)?$/i.test(shell) ? 'npm i -g @qwen-code/qwen-code@latest; if ($?) { qwen }' : AGENT.install
+}
+
+/** shell 报「找不到 qwen 这个命令」的各种说法：zsh / bash，PowerShell（中英文，5.1 的报错里还带 CommandNotFoundException），cmd（中英文） */
+export const QWEN_NOT_FOUND =
+  /command not found: qwen|qwen: command not found|term 'qwen' is not recognized|无法将[“"']qwen[”"']项识别|CommandNotFoundException|'qwen' 不是内部或外部命令|'qwen' is not recognized/
+
 // Qwen Code：底栏的模型名 / 审批模式提示、输入框占位、等确认时的转圈文字
 const QWEN = /Qwen Code|Shift \+ Tab 切换|shift \+ tab to cycle|输入您的消息或|Type your message or @|等待用户确认|Waiting for user confirmation|· qwen\d/
 const agent = /Qwen Code|agent\.ai|✻|⏺|Do you want to|Yes, and don.t ask/

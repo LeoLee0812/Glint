@@ -9,6 +9,7 @@ import { la, toast } from '../appState'
 import type { Doc } from './docs'
 import type { VBox, VisualBlock, VisualLayout } from './pdfLayout'
 import { layoutCanvas, PdfFocusAdapter, PdfVisual } from './pdfVisual'
+import { isMac } from '../platform'
 
 // PDF 论文视图：pdf.js 画页面 + 透明文字层；文字层渲染完做一次版面分析，
 // 把碎片 span 合成「行 → 段」，处理双栏、标题识别，段落焦点和「总结这一节」都靠它。
@@ -570,10 +571,12 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
     if (!active) return
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input,textarea,.xterm')) return
-      if (e.metaKey && (e.key === '=' || e.key === '+')) {
+      // 缩放：Mac ⌘ + / −，Windows Ctrl + / −
+      const zoomKey = isMac ? e.metaKey : e.ctrlKey
+      if (zoomKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault()
         setZoom((z) => Math.min(3, z + 0.15))
-      } else if (e.metaKey && e.key === '-') {
+      } else if (zoomKey && e.key === '-') {
         e.preventDefault()
         setZoom((z) => Math.max(0.5, z - 0.15))
       }

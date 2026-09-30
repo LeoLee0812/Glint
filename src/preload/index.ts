@@ -26,6 +26,8 @@ function on<T>(channel: string, fn: (payload: T) => void): () => void {
 }
 
 const api = {
+  /** 'darwin' / 'win32'：界面上按键怎么写（⌥ / Alt）、要不要显示 iPhone 原深感这些按它分 */
+  platform: process.platform,
   settings: {
     get: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
     save: (s: Settings): Promise<Settings> => ipcRenderer.invoke('settings:save', s),
@@ -56,13 +58,21 @@ const api = {
     send: (cmd: Record<string, unknown>) => ipcRenderer.send('bridge:send', cmd),
     onEvent: (fn: (e: BridgeEvent) => void) => on('bridge:event', fn)
   },
+  /** 按住说话的云端识别（Windows 用；Mac 走原生助手的系统识别）：start 开任务，audio 送 16kHz 单声道 PCM，stop 收尾；结果从 bridge.onEvent 的 asr 事件回来 */
+  asr: {
+    start: (target: string) => ipcRenderer.send('asr:start', target),
+    audio: (pcm: ArrayBuffer) => ipcRenderer.send('asr:audio', pcm),
+    stop: () => ipcRenderer.send('asr:stop')
+  },
   win: {
     setMode: (m: 'normal' | 'calibration'): Promise<string> => ipcRenderer.invoke('win:mode', m),
     requestBounds: () => ipcRenderer.invoke('win:bounds'),
     onBounds: (fn: (b: WinBounds) => void) => on('win:bounds', fn),
     toggleVisible: () => ipcRenderer.send('win:toggleVisible'),
     capture: (rect: Rect): Promise<string | null> => ipcRenderer.invoke('win:capture', rect),
-    focus: () => ipcRenderer.send('win:focus')
+    focus: () => ipcRenderer.send('win:focus'),
+    /** Windows：弹窗蒙层出现 / 消失时，右上角系统按钮条跟着变暗 / 变回白 */
+    setOverlayDim: (dim: boolean) => ipcRenderer.send('win:overlayDim', dim)
   },
   tray: {
     /** 菜单栏图标显示的状态 */

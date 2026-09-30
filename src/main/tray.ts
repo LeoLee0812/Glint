@@ -2,8 +2,9 @@ import { app, Menu, Tray, nativeImage, type MenuItemConstructorOptions } from 'e
 import { join } from 'node:path'
 import type { TrayCommand, TrayStatus } from '../shared/types'
 
-// macOS 菜单栏小图标：一眼看到眼动 / 校准 / 手柄状态，常用操作不用切回窗口
-// 图标是 template 图（resources/tray，scripts/make-tray-icon.py 生成），系统按菜单栏深浅自动反色
+// macOS 菜单栏小图标 / Windows 托盘图标：一眼看到眼动 / 校准 / 手柄状态，常用操作不用切回窗口
+// Mac 用 template 图（系统按菜单栏深浅自动反色）；Windows 任务栏不会反色，用彩色圆角小方块的 ico
+// （都在 resources/tray，scripts/make-tray-icon.py 生成）。Windows 上左键点图标显示窗口、右键出菜单，照 Windows 的习惯
 
 let tray: Tray | null = null
 let status: TrayStatus | null = null
@@ -13,7 +14,10 @@ function iconDir(): string {
   return app.isPackaged ? join(process.resourcesPath, 'tray') : join(app.getAppPath(), 'resources/tray')
 }
 
+const isMac = process.platform === 'darwin'
+
 function icon(on: boolean) {
+  if (!isMac) return nativeImage.createFromPath(join(iconDir(), on ? 'winOn.ico' : 'winOff.ico'))
   const img = nativeImage.createFromPath(join(iconDir(), on ? 'trayTemplate.png' : 'trayOffTemplate.png'))
   img.setTemplateImage(true)
   return img
@@ -59,14 +63,19 @@ function rebuild(): void {
     { label: d.windowVisible() ? '隐藏 Glint 窗口' : '显示 Glint 窗口', click: () => d.toggleWindow() },
     { type: 'separator' },
     { label: running ? '暂停眼动追踪' : '开启眼动追踪', enabled: !!s, click: run({ cmd: 'gaze:toggle' }, false) },
-    {
-      label: '眼动输入源',
-      enabled: !!s,
-      submenu: [
-        { label: 'Mac 摄像头', type: 'radio', checked: s?.source !== 'truedepth', click: run({ cmd: 'gaze:source', source: 'webcam' }, false) },
-        { label: 'iPhone 原深感', type: 'radio', checked: s?.source === 'truedepth', click: run({ cmd: 'gaze:source', source: 'truedepth' }, false) }
-      ]
-    },
+    // iPhone 原深感只有 Mac 版有，别的平台只有摄像头，不用选
+    ...(isMac
+      ? [
+          {
+            label: '眼动输入源',
+            enabled: !!s,
+            submenu: [
+              { label: 'Mac 摄像头', type: 'radio', checked: s?.source !== 'truedepth', click: run({ cmd: 'gaze:source', source: 'webcam' }, false) },
+              { label: 'iPhone 原深感', type: 'radio', checked: s?.source === 'truedepth', click: run({ cmd: 'gaze:source', source: 'truedepth' }, false) }
+            ]
+          } as MenuItemConstructorOptions
+        ]
+      : []),
     { label: '校准…', enabled: !!s, click: run({ cmd: 'calibrate' }) },
     { type: 'separator' },
     {
@@ -97,6 +106,8 @@ function rebuild(): void {
 export function initTray(d: NonNullable<typeof deps>): void {
   deps = d
   tray = new Tray(icon(false))
+  // Windows：左键点托盘图标 = 把窗口拉出来（右键才是菜单，setContextMenu 管）
+  if (!isMac) tray.on('click', () => d.showWindow())
   rebuild()
 }
 
