@@ -10,13 +10,14 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "build:native": "bash native/build.sh",
+    "build:native": "node scripts/build-native.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "dist": "bash native/build.sh && electron-vite build && electron-builder --mac dmg --arm64",
+    "dist:win": "node scripts/build-native.mjs && electron-vite build && electron-builder --win nsis --x64",
     "reinstall": "bash scripts/reinstall.sh",
     "test:truedepth": "node scripts/test-truedepth.mjs",
     "fake-iphone": "node scripts/fake-truedepth.mjs",
-    "postinstall": "install-electron && node scripts/fetch-assets.mjs && electron-builder install-app-deps"
+    "postinstall": "install-electron && node scripts/fetch-assets.mjs && node scripts/install-app-deps.mjs"
   },
   "dependencies": {
     "node-pty": "^1.1.0"
@@ -38,6 +39,7 @@
     "highlight.js": "^11.12.0",
     "katex": "^0.18.9",
     "markdown-it": "^15.0.2",
+    "node-hid": "^3.4.0",
     "pdfjs-dist": "^6.3.289",
     "playwright-core": "^1.63.0",
     "react": "^19.3.0",
