@@ -8,7 +8,8 @@
 
 **眼睛负责「大概在看哪」，Joy-Con 负责「就是这个词」，右边的 AI 自动知道你在看什么。**
 
-[![macOS](https://img.shields.io/badge/macOS-Apple%20芯片-111111?style=flat-square&logo=apple&logoColor=white)](#安装)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20芯片-111111?style=flat-square&logo=apple&logoColor=white)](#mac)
+[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-0078D4?style=flat-square&logo=windows&logoColor=white)](#windows)
 [![Electron](https://img.shields.io/npm/v/electron?style=flat-square&logo=electron&logoColor=white&label=Electron)](https://www.npmjs.com/package/electron)
 [![MediaPipe](https://img.shields.io/npm/v/@mediapipe/tasks-vision?style=flat-square&logo=google&logoColor=white&label=MediaPipe)](https://www.npmjs.com/package/@mediapipe/tasks-vision)
 [![Swift](https://img.shields.io/badge/Swift-原生助手-F05138?style=flat-square&logo=swift&logoColor=white)](native/LookAskBridge)
@@ -19,14 +20,14 @@
 
 </div>
 
-参考 Fovea「attention is now an input for AI」的思路，做成一个 Mac 桌面程序：左边放你要读的东西（论文 PDF、Markdown、跑着 Qwen Code 的终端），右边是可以自选大模型的对话 Agent。摄像头看你的眼睛，Joy-Con 精确点选，提问时自动把「你正在看的那段」当上下文发过去。参加天猫 AI 黑客松·高校挑战赛「效率进化」赛道。
+参考 Fovea「attention is now an input for AI」的思路，做成一个桌面程序（macOS Apple 芯片 / Windows 10、11，同一套代码）：左边放你要读的东西（论文 PDF、Markdown、跑着 Qwen Code 的终端），右边是可以自选大模型的对话 Agent。摄像头看你的眼睛，Joy-Con 精确点选，提问时自动把「你正在看的那段」当上下文发过去。参加天猫 AI 黑客松·高校挑战赛「效率进化」赛道。
 
 ## 能做什么
 
 - **新手引导**：装好第一次打开，一步步带着走：连上 Joy-Con（示意图上按哪个键亮哪个、手柄跟着震）→ 填千问的 Key（当场试一下通不通）→ 校准眼睛 → 在示范文档上真的做一遍「看一段、推摇杆选词、按 A 解释、按住 ZR 说话」，做对一步勾一步；最后可以顺手拍张大头照。右上角「？」里能从头再走一遍
 - **眼动追踪**：普通摄像头 + MediaPipe 人脸 478 点 + 双眼小图特征，17 点校准后岭回归映射到屏幕；One Euro 平滑、注视检测、眨眼帧丢弃
 - **校准小游戏**：点「校准」直接 3、2、1 开始，没有选玩法的页面——两只 Joy-Con 都连着就是手柄小游戏，没连齐就看圆点（看不到脸时才停下来给个摄像头画面，好了自动开始）。手柄小游戏：每个校准点是手柄上的一颗键（左手柄十字键蓝、右手柄 X A B Y 红，一共 8 颗），亮哪颗按哪颗，外圈缩完之前按对算「完美」，越快分越高、有连击，按对「叮叮」、按错闷一下；每局记进排行榜（得分、平均反应、最快一次、最高连击）。要按对就得先看清，眼睛自然盯在点上，采样取按下前那一小段
-- **iPhone 原深感眼动**（第二种输入源）：iPhone 上的 Glint Eye（`ios/LookAskEye`）用 ARKit 拿头的三维位姿和双眼朝向，UDP 发给 Mac；Mac 把视线当成三维射线和屏幕平面求交，头挪、歪、前后动视线点都不跟着跑。设置 → 眼动 → 输入源 一键切换，两种源的校准分开存
+- **iPhone 原深感眼动**（第二种输入源，只有 Mac 版有）：iPhone 上的 Glint Eye（`ios/LookAskEye`）用 ARKit 拿头的三维位姿和双眼朝向，UDP 发给 Mac；Mac 把视线当成三维射线和屏幕平面求交，头挪、歪、前后动视线点都不跟着跑。设置 → 眼动 → 输入源 一键切换，两种源的校准分开存
 - **越用越准**：用摇杆把焦点挪到目标再按 A，那一刻就是一次隐式校准；用手腕精调修正的那一下也会记成一次校准；读着读着视线点飘了，`⌥ + 点击` 正在看的地方，视线点当场拉回来
 - **焦点系统**：一次选多大只有一档——词 / 句 / 段 / 节，按 R 或点顶栏那颗小药丸切（词 → 句 → 段 → 节 → 词），记在本机。视线、右摇杆、十字键全按这一档走：是「词」时视线圈吸住哪个词就选哪个词，推右摇杆逐词 / 逐行挪；是「句 / 段 / 节」时视线圈不再吸词，眼睛落在哪一句 / 哪一段就整个包住它，推右摇杆一次挪一句 / 一段 / 一节（右、下往后，左、上往前）。第一次推摇杆先把眼睛选中的那一格定住（硬焦点），再推才挪
 - **手腕精调**：按下右摇杆焦点跳到视线处，按住不放拧手腕，焦点就从那儿跟着手走（「词」时左右转逐词、上下点逐行；句 / 段 / 节时一格一格走，一格要拧得多一些），松开落定——眼睛负责跳到附近，手腕负责最后那一点，比摇杆一格一格推快
@@ -41,8 +42,8 @@
 - **扫描版 PDF 也能盯着问**：页面只是图片、没有文字层的论文（老论文扫描件、转曲的 PDF），自动按「文字的影子」切块——先摆正扫歪的页面，找出栏缝，再按行切段，图、表、公式各成一块（一页双栏论文通常切成十来块，不是死分几份）。视线照样按块选，推右摇杆逐行走，R 键在 行 → 段 → 栏 之间切；按 A / X / Y 或说话提问时，把盯着的那一块从 PDF 里高清截出来交给看图模型，翻译、解释、总结都能用。PDF 顶上会标「扫描件 · 按版面分块」
 - **右侧对话 Agent**：OpenAI 兼容 / Anthropic 两类接口随便加；回答、翻译、看图三路模型分开配；回答可以「在左侧阅读」，再用眼睛追问
 - **Jev 模式**：在后台陪读，不占对话区——你卡在一段上，那段上方冒一个「A 拆开讲」、右手柄轻敲两下，按 A 就分步骤讲；按 A 解释时按它判断的难度定详略；你开口问，它先判断你要解释、推导还是挑刺、指的是哪一句；终端里的 Qwen Code 等你批准时终端标签上挂个紫点、左手柄心跳。判断记录收在顶栏的 Jev 药丸里
-- **菜单栏小图标**：右上角一只小眼睛（睁眼 = 眼动在跑，闭眼 = 暂停），点开能看眼动 / 校准 / 手柄状态（放在桌上会标「放下」），一键暂停眼动、切摄像头 / iPhone、校准、切视线跟左边还是右边、开关 Jev、找手柄（两只一起「哔哔」响几秒、灯跟着闪）、打开文件、新建终端、进设置
-- **语音**：按住 ZR 说话问 AI；终端里按住 ZL 说话，文字直接打进 Qwen Code（系统语音识别，Apple 芯片上本地完成）
+- **菜单栏小图标**：右上角一只小眼睛（睁眼 = 眼动在跑，闭眼 = 暂停；Windows 上在任务栏右下角的托盘里，蓝色 = 在跑、灰色 = 暂停，左键点开窗口、右键出菜单），点开能看眼动 / 校准 / 手柄状态（放在桌上会标「放下」），一键暂停眼动、切摄像头 / iPhone、校准、切视线跟左边还是右边、开关 Jev、找手柄（两只一起「哔哔」响几秒、灯跟着闪）、打开文件、新建终端、进设置
+- **语音**：按住 ZR 说话问 AI；终端里按住 ZL 说话，文字直接打进 Qwen Code（Mac 用系统语音识别，Apple 芯片上本地完成；Windows 用阿里云百炼的 Fun-ASR 实时识别，和对话共用千问的 Key）
 
 ## Joy-Con 按键：左手管左边，右手管右边
 
@@ -85,9 +86,9 @@
 
 手柄平放在桌上不动 3 秒就算「放下」：这时不震（找手柄除外），顶栏的手柄标记变淡；一拿起、一按键就恢复。视线光环不跟着变淡（握在手里不动 3 秒也会被判成放下，以前光环会莫名发白）。
 
-这样分的理由：高频动作（问、选、停）全在右手拇指和右扳机上；左手只管「内容怎么动」，所以在终端里十字键自然变成方向键和回车，用 Qwen Code 时可以靠在椅子上批准操作。− / + 正好一左一右：按哪边的键，视线就只跟哪一边。系统自带的 GameController 框架会把单只 Joy-Con 当成横握小手柄（没有 R / ZR / 摇杆按下），所以这里用原生助手直接读 HID 原始报告，每个键都能用，后台也能收到。
+这样分的理由：高频动作（问、选、停）全在右手拇指和右扳机上；左手只管「内容怎么动」，所以在终端里十字键自然变成方向键和回车，用 Qwen Code 时可以靠在椅子上批准操作。− / + 正好一左一右：按哪边的键，视线就只跟哪一边。系统自带的 GameController 框架会把单只 Joy-Con 当成横握小手柄（没有 R / ZR / 摇杆按下），所以这里用原生助手直接读 HID 原始报告，每个键都能用，后台也能收到（Windows 上同样绕开系统和浏览器的手柄接口，用 node-hid 直接读写 HID 报告）。
 
-没连手柄时键盘只留五个核心功能：`⌥ + 方向键` 移焦点，`⌥↩` 解释，`⌥T` 翻译，`⌥S` 总结，按住 `⌥空格` 说话（`Esc` 等于 B）；其余操作用鼠标点界面，比如顶栏的 − / + 切视线跟哪边。没校准眼动时鼠标停住就当视线，`⌥ + 点击` 直接落硬焦点（点到另一边会顺手切过去）；已校准时这一下同时是一次漂移校正。
+没连手柄时键盘只留五个核心功能：`⌥ + 方向键` 移焦点，`⌥↩` 解释，`⌥T` 翻译，`⌥S` 总结，按住 `⌥空格` 说话（`Esc` 等于 B；Windows 上 ⌥ 就是 `Alt`，但 `Alt+空格` 会弹出窗口的系统菜单，所以按住说话改成 `Alt+V`）；其余操作用鼠标点界面，比如顶栏的 − / + 切视线跟哪边。没校准眼动时鼠标停住就当视线，`⌥ + 点击` 直接落硬焦点（点到另一边会顺手切过去）；已校准时这一下同时是一次漂移校正。
 
 ## 实时小人
 
@@ -126,7 +127,7 @@
 
 左侧「终端」标签的「启动 Qwen Code」按钮跑的是 [Qwen Code](https://github.com/QwenLM/qwen-code)（千问官方开源的命令行编程智能体，命令 `qwen`），和 Qwen Code 一样在终端里读代码、改文件、跑命令，模型走阿里云百炼：
 
-- **不用另配 Key**：Glint 起终端时把设置里「千问 · 阿里云百炼」的 Key 放进环境变量 `DASHSCOPE_API_KEY`，再用 `QWEN_CODE_SYSTEM_DEFAULTS_PATH` 指向 Glint 自己写的一份 Qwen Code 默认设置（`~/Library/Application Support/LookAsk/qwen-code/system-defaults.json`，不含 Key）。这一层优先级最低，你自己在 `~/.qwen/settings.json` 里配了 Coding Plan / Token Plan 或换了默认模型，都以你的为准
+- **不用另配 Key**：Glint 起终端时把设置里「千问 · 阿里云百炼」的 Key 放进环境变量 `DASHSCOPE_API_KEY`，再用 `QWEN_CODE_SYSTEM_DEFAULTS_PATH` 指向 Glint 自己写的一份 Qwen Code 默认设置（`~/Library/Application Support/LookAsk/qwen-code/system-defaults.json`，Windows 是 `%APPDATA%\LookAsk\qwen-code\system-defaults.json`，不含 Key）。这一层优先级最低，你自己在 `~/.qwen/settings.json` 里配了 Coding Plan / Token Plan 或换了默认模型，都以你的为准
 - **默认模型** `qwen3.8-max`（千问目前最强的编程 / 智能体模型，百炼北京价输入 12 元、输出 36 元 / 百万 token，命中缓存的输入 1.5 元）；进去后 `/model` 可换 `qwen3.7-plus`（输入 2 元、输出 8 元）或 `qwen3.8-flash`（输入 1 元、输出 3 元）
 - **没装会自动装**：点按钮时如果 shell 报找不到 `qwen`，就地执行 `npm i -g @qwen-code/qwen-code@latest` 再启动（要 Node 22+）
 - **审批模式**：Qwen Code 默认「自动模式」（先让模型判断每一步，安全的自动放行，有风险的拦下，反复被拦就转成人工确认）；终端里按 −（⇧Tab）轮换 计划 / 请求授权 / 自动编辑 / 自动 / YOLO。弹出「允许执行：'rm'？」「是否应用此更改？」时左手柄「心跳」，十字键 → 放行（开着 Jev 会先评风险）
@@ -173,10 +174,13 @@ Joy-Con L/R ─ IOHIDManager 原始报告（Swift 原生助手）─ 按键路�
 - `src/renderer/src/gaze`：眼动引擎、校准界面、视线图层；`sources/` 是两种输入源（摄像头、原深感），`td/` 是原深感的几何换算和校准模型
 - `src/renderer/src/focus`：焦点控制器和三种适配器（DOM 文字、终端、屏幕）
 - `src/renderer/src/input`：Joy-Con 解码与按键路由、触感词汇表（`haptics.ts`）、手腕精调（`wrist.ts`）
+- `native/win`：Windows 版原生助手（TypeScript + node-hid，只管 Joy-Con，JSON 行协议和 Swift 版一样），用 Electron 自带的 Node 跑；Windows 的按住说话在渲染进程采 16kHz PCM，主进程转给百炼 Fun-ASR（`src/main/asrCloud.ts`）
 - `native/LookAskBridge`：Swift 原生助手（Joy-Con HID：按键 / 摇杆 / 6 轴 IMU、按 15ms 节拍发震动和灯；语音；原深感 UDP 收包 + Bonjour 广播），stdin/stdout 走 JSON 行协议
 - `ios/LookAskEye`：iPhone 端 App Glint Eye（SwiftUI + ARKit + Network.framework），工程由 XcodeGen 生成
 
 ## 安装
+
+### Mac
 
 1. 打开 `Glint-0.1.0-arm64.dmg`，把 Glint 拖进「应用程序」
 2. 没做公证，第一次双击会被拦：右键 → 打开；提示「已损坏」就在终端执行
@@ -189,6 +193,24 @@ Joy-Con L/R ─ IOHIDManager 原始报告（Swift 原生助手）─ 按键路�
 
 Joy-Con 先在「系统设置 → 蓝牙」里配对（按住侧边小圆键进入配对）。手柄闲置会休眠断开，按任意键唤醒；被 Glint 接管后玩家灯会亮成常亮。
 
+### Windows
+
+1. 到 [Releases](https://github.com/LeoLee0812/LookAsk/releases) 下载 `Glint-Setup-<版本>-x64.exe`，双击安装（可以改安装位置，装完桌面和开始菜单里都有「Glint 瞳问」）
+2. 没做代码签名，第一次运行 SmartScreen 会拦：点「更多信息 → 仍要运行」
+3. Joy-Con 配对：设置 → 蓝牙和其他设备 → 添加设备 → 蓝牙，按住手柄侧面导轨上的小圆键直到指示灯来回跑，选「Joy-Con (L)」「Joy-Con (R)」；以后开 Glint 会自动接管，玩家灯变成常亮
+4. 开着 Steam 的话它会接管 Switch 手柄、改手柄的上报模式，两边会打架：在 Steam 设置 → 控制器 里关掉 Switch 控制器支持，或者先退出 Steam
+5. 摄像头 / 麦克风打不开：设置 → 隐私和安全性 → 相机 / 麦克风，打开「让桌面应用访问…」；一个摄像头同一时间只能给一个程序用，开着会议软件要先关掉；带「Windows 工作室效果」的电脑先把「自动取景」关掉（和 Mac 的人物居中一样，会让校准失效）
+6. 新手引导、填 Key、校准都和 Mac 一样；用户数据在 `%APPDATA%\LookAsk`，卸载不会删
+7. 可选，本地小模型：从 [ollama.com](https://ollama.com/download) 装 Ollama（或 `winget install Ollama.Ollama`），在终端里 `ollama pull qwen3.5:4b`，再到 设置 → 模型分配 里选「本地千问 · Ollama」；上下文放到 16384 的办法和 Mac 一样（见 `scripts/setup-local-model.sh`：写一个只有 `FROM qwen3.5:4b` 和 `PARAMETER num_ctx 16384` 两行的 Modelfile，`ollama create qwen3.5:4b -f Modelfile`）
+
+Windows 版和 Mac 版的差别：
+
+- 没有 iPhone 原深感（手机的数据是发给 Mac 上的原生助手收的），眼动只有摄像头这一种输入源
+- 按住说话走阿里云百炼的 Fun-ASR 实时识别（`fun-asr-realtime`），用「千问 · 阿里云百炼」的 Key，按说话时长计费；松手后麦克风再留 30 秒（任务栏的麦克风图标这时还亮着），接着问第二句不用等开麦
+- 键盘兜底用 `Alt` 代替 `⌥`，按住说话是 `Alt+V`
+- 按手柄 HOME 呼出窗口时，Windows 不许后台程序抢键盘焦点：窗口会被拉到最上面，但要打字得先点一下窗口（手柄操作不受影响）
+- 终端默认是 PowerShell 7（没装就用系统自带的 Windows PowerShell），「启动 Qwen Code」没装时会自动 `npm i -g` 装上（要 Node 22+）
+
 ## 开发
 
 ```bash
@@ -199,6 +221,14 @@ npm run dist           # 出 release/<版本>/LookAsk-<版本>-arm64.dmg
 npm run test:truedepth # 原深感 Mac 端全链路测试（假 iPhone + Playwright，窗口会全屏跑一次校准，别碰键鼠）
 npm run fake-iphone    # 假 iPhone：按协议往 Mac 发帧（--drop 5% --jitter 20ms --mirror 等）
 
+# Windows（Node 要 22.12 以上：Electron 44 的安装脚本要 require() ES 模块，
+# 22.11 及以下临时加 NODE_OPTIONS=--experimental-require-module）
+npm install            # Windows 上不为 Electron 重编译 node-pty（它自带 Windows 预编译版，源码包在 Windows 上也编不过）
+npm run build:native   # esbuild 把 native/win 打成 native/bin/lookask-bridge.cjs，连同 node-hid 的预编译二进制
+npm run dev
+npm run dist:win       # 出 release/<版本>/Glint-Setup-<版本>-x64.exe（NSIS 安装包，没签名）
+node native/bin/lookask-bridge.cjs --probe   # 单独跑手柄助手，按手柄键看 JSON（系统里装的 Node 就能跑）
+
 bash ios/LookAskEye/build.sh test     # iPhone 端：生成工程 + 模拟器上跑单元测试
 bash ios/LookAskEye/build.sh ipa      # 无签名 ipa → release/ios/（用 Sideloadly / AltStore 拿 Apple ID 重签安装）
 bash ios/LookAskEye/build.sh device   # 用本机个人团队证书签名并装到插着线（或同一 Wi‑Fi、已解锁）的 iPhone
@@ -208,9 +238,9 @@ iPhone 端注意：没越狱的 iPhone 装不了完全无签名的 App；免费�
 
 国内网络：`.npmrc` 已配 npmmirror 和 Electron 镜像；Node 自带的 fetch 不认 `HTTP_PROXY`，首次下载 MediaPipe 模型超时可以加 `NODE_USE_ENV_PROXY=1`。
 
-原生助手可以单独跑来查手柄：`native/bin/lookask-bridge`，按手柄上的键会打印 JSON。
+原生助手可以单独跑来查手柄：`native/bin/lookask-bridge`（Windows 是 `node native/bin/lookask-bridge.cjs`），按手柄上的键会打印 JSON。
 
-测试开关（环境变量）：`LOOKASK_FAKE_CAM=1` 用 Chromium 假摄像头，再加 `LOOKASK_FAKE_CAM_FILE=<y4m/mjpeg>` 用视频文件当摄像头；`LOOKASK_USER_DATA=<目录>` 换一套用户数据（设置、校准、小人都分开存），能和已装好的 Glint 同时开；`LOOKASK_NO_BRIDGE=1` 不拉原生助手，免得和正在用的 Glint 抢手柄；`LOOKASK_BRIDGE_NO_JOY=1` 拉原生助手但不接管 Joy-Con（测原深感时用，收包在原生助手里）；`LOOKASK_TD_PORT` / `LOOKASK_TD_NAME` 指定原深感的 UDP 端口和 Bonjour 名字。
+测试开关（环境变量）：`LOOKASK_FAKE_CAM=1` 用 Chromium 假摄像头，再加 `LOOKASK_FAKE_CAM_FILE=<y4m/mjpeg>` 用视频文件当摄像头；`LOOKASK_USER_DATA=<目录>` 换一套用户数据（设置、校准、小人都分开存），能和已装好的 Glint 同时开；`LOOKASK_NO_BRIDGE=1` 不拉原生助手，免得和正在用的 Glint 抢手柄；`LOOKASK_BRIDGE_NO_JOY=1` 拉原生助手但不接管 Joy-Con（测原深感时用，收包在原生助手里）；`LOOKASK_TD_PORT` / `LOOKASK_TD_NAME` 指定原深感的 UDP 端口和 Bonjour 名字；`LOOKASK_ASR_URL=ws://…` 让 Windows 的按住说话连到本地模拟的识别服务（测语音链路不花钱）。
 
 ## 精度说明
 
@@ -222,4 +252,5 @@ iPhone 原深感主要解决「头一动就偏」：用假 iPhone 数据（按 A
 
 - 眼动特征与岭回归积木来自 [RealEye Webcam EyeTracker Light Open](https://github.com/RealEye-io/webcam-eyetracker-light-open)（AGPL-3.0 或其商业许可；估值 / 课题经费不超过 100 万美元的公司与学术项目可免费走商业许可）
 - [MediaPipe](https://github.com/google-ai-edge/mediapipe)（Apache-2.0）、[pdf.js](https://github.com/mozilla/pdf.js)（Apache-2.0）、[xterm.js](https://github.com/xtermjs/xterm.js)（MIT）、[node-pty](https://github.com/microsoft/node-pty)（MIT）、[KaTeX](https://github.com/KaTeX/KaTeX)（MIT）
+- Windows 版读写手柄用 [node-hid](https://github.com/node-hid/node-hid)（MIT / X11，底层是 hidapi）
 - Joy-Con HID 协议参考 [dekuNukem/Nintendo_Switch_Reverse_Engineering](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering)，HD 震动编码移植自 [tomayac/joy-con-webhid](https://github.com/tomayac/joy-con-webhid)
