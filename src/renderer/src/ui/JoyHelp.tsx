@@ -1,33 +1,62 @@
 import { useEffect } from 'react'
 import { useStore } from '../store'
 import { uiStore } from '../appState'
-import { input } from '../input/joycon'
+import { input, type Btn } from '../input/joycon'
+import { openGuide } from '../onboarding'
+import { KeyCap, Kbd } from './JoyKeys'
 
-// 按键速查：左手管左边，右手管右边
+// 按键速查：左手管左边的内容，右手管右边的 AI。第一次用的人走新手引导，这里只当备查
 
-const LEFT: Array<[string, string]> = [
-  ['左摇杆', '上下滚动 · 左右翻页'],
-  ['左摇杆按下', '拍大头照（只在拍照窗口里用）'],
-  ['十字键 ↑↓', '文档：跳段 · 终端：方向键'],
-  ['十字键 → ←', '文档：翻页 · 终端：回车 / Esc'],
-  ['L', '切换左侧标签'],
-  ['ZL（按住）', '说话 → 打字进终端（Qwen Code）'],
-  ['−', '视线跟左边内容（终端里再按 = ⇧Tab）'],
-  ['截图键', '整块截图，蓝圈标出你在看哪，交给看图模型重点解释']
+type Row = [Btn[], string, string?]
+
+const LEFT: Row[] = [
+  [['LS'], '滚动，左右推是翻页'],
+  [['Up', 'Down'], '上一段 / 下一段'],
+  [['Left', 'Right'], '翻页'],
+  [['L'], '切标签'],
+  [['ZL'], '对终端说话', '按住'],
+  [['Minus'], '视线跟左边'],
+  [['Capture'], '截图问']
 ]
 
-const RIGHT: Array<[string, string]> = [
-  ['右摇杆', '微调焦点：先落到视线圈吸住的词，再左右逐词、上下逐行（每步咔一下，跨句咔咔、跨段咚）'],
-  ['右摇杆按下', '焦点跳回视线处 · 按住拧手腕 = 从这里精调（左右转逐词、上下点逐行），松开落定'],
-  ['A', '解释'],
-  ['X', '翻译'],
-  ['Y', '总结'],
-  ['B', '放开焦点 / 停止回答 / 收起最下面一层解释窗口'],
-  ['ZR（按住）', '说话提问，松开发送'],
-  ['R', '粒度：词 → 句 → 段 → 节（咔 1~4 下）'],
-  ['+', '视线跟右边的回答，不懂的按 A 往下裂变解释 · 长按 = Jev 开/关'],
-  ['HOME', '显示/隐藏 Glint（AI 思考时这圈灯呼吸）']
+const TERMINAL: Row[] = [
+  [['Up', 'Down'], '选选项'],
+  [['Right'], '确认'],
+  [['Left'], '取消'],
+  [['Minus'], '切审批模式']
 ]
+
+const RIGHT: Row[] = [
+  [['RS'], '挪焦点，一次一格'],
+  [['RS'], '跳到你正在看的地方', '按下'],
+  [['RS'], '转手腕微调', '按住'],
+  [['A'], '解释'],
+  [['X'], '翻译'],
+  [['Y'], '总结'],
+  [['B'], '取消 / 停止'],
+  [['ZR'], '说出问题，松开发送', '按住'],
+  [['R'], '一格多大：词 / 句 / 段 / 节'],
+  [['Plus'], '视线跟右边，长按开关 Jev'],
+  [['Home'], '显示 / 隐藏窗口']
+]
+
+function Rows({ rows }: { rows: Row[] }): React.JSX.Element {
+  return (
+    <div className="kh-rows">
+      {rows.map(([keys, what, how], i) => (
+        <div className="kh-row" key={i}>
+          <span className="kh-keys">
+            {how && <span className="kh-how">{how}</span>}
+            {keys.map((k) => (
+              <KeyCap key={k} k={k} />
+            ))}
+          </span>
+          <span className="kh-what">{what}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export function JoyHelp(): React.JSX.Element | null {
   const ui = useStore(uiStore)
@@ -39,45 +68,56 @@ export function JoyHelp(): React.JSX.Element | null {
   return (
     <div className="modal-mask" onClick={() => uiStore.patch({ showHelp: false })}>
       <div className="modal help" onClick={(e) => e.stopPropagation()}>
-        <h2>Joy-Con 按键：左手管左边，右手管右边</h2>
+        <h2>按键</h2>
         <div className="help-cols">
-          <div>
-            <h3 className="joy-l">左手 · 操作内容</h3>
-            <table>
-              <tbody>
-                {LEFT.map(([k, v]) => (
-                  <tr key={k}>
-                    <td>
-                      <kbd>{k}</kbd>
-                    </td>
-                    <td>{v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <h3 className="joy-r">右手 · 问 AI</h3>
-            <table>
-              <tbody>
-                {RIGHT.map(([k, v]) => (
-                  <tr key={k}>
-                    <td>
-                      <kbd>{k}</kbd>
-                    </td>
-                    <td>{v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <section className="kh-card kh-L">
+            <h3>左手 · 管内容</h3>
+            <Rows rows={LEFT} />
+            <h4>在终端里</h4>
+            <Rows rows={TERMINAL} />
+          </section>
+          <section className="kh-card kh-R">
+            <h3>右手 · 问 AI</h3>
+            <Rows rows={RIGHT} />
+          </section>
         </div>
-        <p className="dim small">
-          键盘兜底：⌥+方向键 移焦点 · ⌥⇧+方向键 滚动 · ⌥↩ 解释 · ⌥T 翻译 · ⌥S 总结 · ⌥G 粒度 · 按住⌥空格 说话 · 按住⌥V 说给终端 · ⌥C 看图 · ⌥D 视线跟左边 · ⌥J 视线跟右边（按住 = Jev）· ⌥L 切标签
-        </p>
-        <button className="btn primary" onClick={() => uiStore.patch({ showHelp: false })}>
-          知道了（B）
-        </button>
+        <div className="kh-kb">
+          <b>没手柄时</b>
+          <span>
+            <Kbd>⌥</Kbd>
+            <Kbd>方向键</Kbd> 挪焦点
+          </span>
+          <span>
+            <Kbd>⌥</Kbd>
+            <Kbd>↩</Kbd> 解释
+          </span>
+          <span>
+            <Kbd>⌥</Kbd>
+            <Kbd>T</Kbd> 翻译
+          </span>
+          <span>
+            <Kbd>⌥</Kbd>
+            <Kbd>S</Kbd> 总结
+          </span>
+          <span>
+            按住 <Kbd>⌥</Kbd>
+            <Kbd>空格</Kbd> 说话
+          </span>
+        </div>
+        <div className="kh-actions">
+          <button
+            className="btn ghost"
+            onClick={() => {
+              uiStore.patch({ showHelp: false })
+              openGuide()
+            }}
+          >
+            从头走一遍引导
+          </button>
+          <button className="btn primary" onClick={() => uiStore.patch({ showHelp: false })}>
+            知道了（B）
+          </button>
+        </div>
       </div>
     </div>
   )

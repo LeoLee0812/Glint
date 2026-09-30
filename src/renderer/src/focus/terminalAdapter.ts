@@ -162,6 +162,11 @@ export function createTerminalAdapter(id: string, getTerm: () => Terminal | null
       let r = dir === 'down' ? e + 1 : s - 1
       while (r >= 0 && r < t.buffer.active.length && !line(r).text.trim()) r += dir === 'down' ? 1 : -1
       if (r < 0 || r >= t.buffer.active.length) return null
+      // 跳到屏幕外的块：先滚到整块露出来（按段挪焦点时要能一直往下走）；比一屏还高的块露出开头
+      const [bs, be] = blockRows(r)
+      const top = t.buffer.active.viewportY
+      if (bs < top) t.scrollLines(bs - top - 1)
+      else if (be >= top + t.rows) t.scrollLines(Math.min(be - top - t.rows + 2, bs - top))
       return { pane: id, row: r, col: 0 } as TermAnchor
     },
 

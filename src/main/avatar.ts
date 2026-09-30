@@ -53,14 +53,14 @@ function dashscopeUrl(baseUrl: string): string | null {
 
 /** 大头照（PNG dataURL）→ 卡通小人（PNG dataURL），同时存盘；一般半分钟 */
 export async function generateAvatar(photo: string): Promise<{ dataUrl: string; ms: number } | { error: string }> {
-  if (running) return { error: '上一个小人还在生成，等它画完' }
+  if (running) return { error: '上一个还没画完，等一下' }
   const t0 = Date.now()
   const s = loadSettings()
   const cfg = s.avatar
   const p = s.providers.find((x) => x.id === cfg.providerId)
-  if (!p) return { error: `找不到服务商「${cfg.providerId}」，去设置 → 眼动 → 实时小人里选一个` }
+  if (!p) return { error: `找不到服务商「${cfg.providerId}」，去设置 → 眼动里重新选` }
   const url = dashscopeUrl(p.baseUrl)
-  if (!url) return { error: `「${p.name}」不是阿里云百炼的地址，小人只能用百炼的千问图像模型画` }
+  if (!url) return { error: `小人只能用阿里云百炼画，「${p.name}」不是百炼的地址` }
   if (!p.apiKey) return { error: `「${p.name}」还没填 API Key` }
   if (!/^data:image\/\w+;base64,/.test(photo)) return { error: '照片格式不对' }
 
@@ -89,11 +89,11 @@ export async function generateAvatar(photo: string): Promise<{ dataUrl: string; 
     if (!res.ok || j?.code) return { error: `${j?.code || `HTTP ${res.status}`}：${j?.message || text.slice(0, 200)}` }
     // 百炼只回一个 24 小时有效的图片链接，当场下载
     const imgUrl: string | undefined = j?.output?.choices?.[0]?.message?.content?.find((c: any) => c?.image)?.image
-    if (!imgUrl) return { error: `接口没返回图片：${text.slice(0, 300)}` }
+    if (!imgUrl) return { error: `百炼没返回图片：${text.slice(0, 300)}` }
     const r = await net.fetch(imgUrl, { signal: ac.signal })
-    if (!r.ok) return { error: `下载生成的图失败：HTTP ${r.status}` }
+    if (!r.ok) return { error: `图画好了但没下载下来（HTTP ${r.status}）` }
     const img = nativeImage.createFromBuffer(Buffer.from(await r.arrayBuffer()))
-    if (img.isEmpty()) return { error: '生成的图片解不开' }
+    if (img.isEmpty()) return { error: '生成的图片打不开' }
     const png = img.resize({ width: OUT_SIZE, height: OUT_SIZE, quality: 'best' }).toPNG()
     writeFileSync(avatarPath(), png)
     return { dataUrl: `data:image/png;base64,${png.toString('base64')}`, ms: Date.now() - t0 }

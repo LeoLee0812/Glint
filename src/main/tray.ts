@@ -28,13 +28,12 @@ function gazeLine(s: TrayStatus): string {
 }
 
 function calLine(s: TrayStatus): string {
-  if (!s.calibrated) return '校准：还没校准'
-  return s.cvErrorPx != null ? `校准：误差约 ${Math.round(s.cvErrorPx)} 点` : '校准：已校准'
+  return s.calibrated ? '校准：已校准' : '校准：还没校准'
 }
 
 function joyLine(s: TrayStatus): string {
   // 放在桌上时震动先停（硬桌面一震嗡嗡响），拿起来就恢复
-  const mark = (on: boolean, rest: boolean) => (on ? (rest ? '已连（放下）' : '已连') : '未连')
+  const mark = (on: boolean, rest: boolean) => (on ? (rest ? '放在桌上' : '已连') : '没连')
   return `手柄：左 ${mark(s.joyL, s.joyRestL)} · 右 ${mark(s.joyR, s.joyRestR)}`
 }
 
@@ -69,7 +68,6 @@ function rebuild(): void {
       ]
     },
     { label: '校准…', enabled: !!s, click: run({ cmd: 'calibrate' }) },
-    { label: '测精度…', enabled: !!s?.calibrated, click: run({ cmd: 'validate' }) },
     { type: 'separator' },
     {
       label: '视线跟随',
@@ -83,7 +81,7 @@ function rebuild(): void {
     // 两只手柄「哔哔」响几秒、灯一起闪，放在桌上也响
     { label: '找手柄', enabled: !!s && (s.joyL || s.joyR), click: run({ cmd: 'joy:find' }, false) },
     { type: 'separator' },
-    { label: '打开 PDF / Markdown…', enabled: !!s, click: run({ cmd: 'open' }) },
+    { label: '打开文件…', enabled: !!s, click: run({ cmd: 'open' }) },
     { label: '新建终端', enabled: !!s, click: run({ cmd: 'terminal' }) },
     { type: 'separator' },
     { label: '按键说明', enabled: !!s, click: run({ cmd: 'help' }) },

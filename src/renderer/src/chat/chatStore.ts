@@ -4,10 +4,10 @@ import { la, settingsStore, rumble, toast, uiStore } from '../appState'
 import { haptic } from '../input/haptics'
 import { focus } from '../focus/focus'
 import { snapshot } from '../focus/snapshot'
-import type { FocusContext } from '../focus/types'
+import type { FocusContext, Granularity } from '../focus/types'
 import { clip } from '../focus/types'
 import { buildPrompt, bubbleText, FORK_HINT, type Action } from './prompts'
-import { routeQuestion, jevEnabled, candidatesOf, type JevTrace } from '../jev/jevBrain'
+import { routeQuestion, jevEnabled, candidatesOf, analysisOf, ACTION_NAME } from '../jev/jevBrain'
 
 // 右侧对话：一问一答 + 流式输出；每次提问自动带上「你正在看的东西」
 // 右侧模式（右手柄 +）下对回答里某一处提问，不往主对话里塞，而是在下面「裂变」出一个解释窗口，
@@ -25,7 +25,8 @@ export interface ChatMsg {
   status?: 'streaming' | 'done' | 'error'
   error?: string
   reasoning?: string
-  jev?: JevTrace[]
+  /** Jev 改了答法时，提问气泡下面的一句小字（按「推导」答 · 指第 2 句） */
+  jevNote?: string
   ms?: number
 }
 
@@ -123,6 +124,10 @@ export interface AskOptions {
   noContext?: boolean
   /** 答案放哪：主对话 / 往下裂变的解释窗口；不传就看视线跟着哪边（右边 = 解释窗口） */
   target?: 'main' | 'fork'
+  /** 答多详细 0~2（Jev 提示「卡住了」时按 A = 2，分步骤拆开讲） */
+  depth?: number
+  /** 按这个粒度取焦点上下文（不传就是当前选中的那一格） */
+  gran?: Granularity
 }
 
 /** 这段回答当时在回应什么：解释窗口里是上一层问的那一处；主对话里往上找最近的那一问 */
@@ -159,7 +164,7 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
   } else {
     // 自由提问时，只有焦点是新鲜的（硬焦点或 30 秒内看过）才附带上下文，免得把很久以前看的东西塞给模型
     const skipCtx = opts.noContext || (action === 'ask' && !opts.ctx && !focus.isFresh())
-    ctx = skipCtx ? null : opts.ctx ?? (await focus.context({ withImage: opts.withImage }))
+    ctx = skipCtx ? null : opts.ctx ?? (await focus.context({ withImage: opts.withImage, gran: opts.gran }))
   }
   const paneId = focus.state.get().paneId
 
@@ -167,7 +172,7 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
     // 右侧模式下没指着回答里的哪一处：说出来的问题照常进主对话，按键就提示先看准
     if (action === 'ask' && opts.question) toFork = false
     else {
-      toast('右侧模式：先看着回答里不懂的地方（或推右摇杆点准），再按键', 'warn')
+      toast('先看着回答里没懂的地方，再按键', 'warn')
       return
     }
   }
@@ -182,8 +187,8 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
   }
 
   let act = action
-  let depth: number | undefined
-  const traces: JevTrace[] = []
+  let depth: number | undefined = opts.depth
+  let jevNote: string | undefined
 
   // Jev 模式：自由提问先让 Jev 判断意图、要不要看图、答多深
   if (act === 'ask' && opts.question && jevEnabled()) {
@@ -191,7 +196,6 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
     const cands = candidatesOf(ctx)
     const r = await routeQuestion(opts.question, ctx, cands)
     if (r) {
-      traces.push(r.trace)
       depth = r.depth
       if (ctx && r.target !== null && cands[r.target]) ctx = { ...ctx, selection: cands[r.target], gran: 'sentence' }
       if (r.action && r.action !== 'ask') act = r.action
@@ -199,7 +203,15 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
         const withImg = await focus.context({ withImage: true })
         if (withImg?.image) ctx = { ...ctx, image: withImg.image }
       }
+      const bits = [act !== 'ask' ? `按「${ACTION_NAME[act] ?? act}」答` : '', r.target !== null ? `指第 ${r.target + 1} 句` : '']
+      jevNote = bits.filter(Boolean).join(' · ') || undefined
     }
+  }
+
+  // Jev 模式下按 A 解释一段 / 一句：按 Jev 看过的难度定详略（很难就分步骤讲，很容易就一小段）
+  if (act === 'explain' && depth === undefined && jevEnabled() && ctx && (ctx.gran === 'paragraph' || ctx.gran === 'sentence')) {
+    const a = analysisOf(ctx.paragraph || ctx.selection || '')
+    if (a) depth = a.difficulty >= 2 ? 2 : a.difficulty < 0.8 ? 1 : undefined
   }
 
   const image = ctx?.image
@@ -214,7 +226,7 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
     ctx,
     image,
     action: act,
-    jev: traces.length ? traces : undefined
+    jevNote
   }
   const botMsg: ChatMsg = { id: uid('m'), role: 'assistant', text: '', status: 'streaming', model: `${model.model}`, action: act }
   let hist: ChatMessageIn[]
@@ -280,8 +292,8 @@ export function abort(): void {
   if (busy) la.llm.abort(busy)
 }
 
-export function addNote(text: string, jev?: JevTrace[]): string {
-  const m: ChatMsg = { id: uid('n'), role: 'note', text, jev }
+export function addNote(text: string): string {
+  const m: ChatMsg = { id: uid('n'), role: 'note', text }
   chatStore.set((s) => ({ ...s, msgs: [...s.msgs, m] }))
   return m.id
 }

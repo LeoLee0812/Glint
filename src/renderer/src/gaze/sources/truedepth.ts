@@ -123,7 +123,7 @@ export class TrueDepthSource {
     for (const u of unpaired) {
       if (this.toastedUnpaired.has(u.dev)) continue
       this.toastedUnpaired.add(u.dev)
-      toast(u.badCode ? `「${u.name}」换过配对码，要重新输入` : `发现 iPhone「${u.name}」：输入手机上显示的 4 位配对码就能用`, 'info', {
+      toast(u.badCode ? `「${u.name}」换过配对码，要重新输入` : `发现「${u.name}」，输入手机上的配对码就能用`, 'info', {
         ttl: 9000,
         action: { label: '去配对', run: () => uiStore.patch({ showSettings: true, settingsTab: 'gaze' }) }
       })
@@ -197,7 +197,7 @@ export class TrueDepthSource {
     if (this.link.state !== 'lost') {
       this.setLink({ state: 'lost', distanceCm: null })
       this.hooks.status({ state: 'error', error: 'iPhone 已断开', face: false, fps: 0 })
-      this.lostToast = toast('iPhone 已断开：看看手机上的 Glint Eye 还开着吗、Wi‑Fi 还连着吗', 'warn', { ttl: 8000 })
+      this.lostToast = toast('iPhone 断开了，看看手机上的 Glint Eye 还开着没', 'warn', { ttl: 8000 })
     }
     this.lastT = Math.max(this.lastT, now)
     this.hooks.frame({ t: now, features: null, face: false, blink: 0, headZ: null, faceBox: null, pose: null, expr: null })

@@ -18,13 +18,12 @@ window.addEventListener(
     // 人一般先看过去再点，取按下前 400ms 的平均预测
     const pred = gaze.recentPrediction(400)
     if (!pred) {
-      toast('没看到脸，这次没法校正', 'warn')
+      toast('没看到脸，没法校正', 'warn')
       return
     }
     const target = clientToScreen(e.clientX, e.clientY)
-    const off = Math.round(Math.hypot(target.x - pred.x, target.y - pred.y))
     gaze.addResidual(target, pred, 2)
-    toast(`漂移已校正（偏了 ${off} 点）`, 'ok')
+    toast('视线拉回来了', 'ok')
   },
   true
 )

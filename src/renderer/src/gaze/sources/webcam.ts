@@ -100,7 +100,7 @@ export class WebcamSource {
       const notFound = e?.name === 'NotFoundError' || /not found/i.test(e?.message || '')
       this.hooks.status({
         state: 'error',
-        error: notFound ? '没有可用的摄像头（MacBook 合盖时内置摄像头不可用，可以用 iPhone 连续互通相机）' : e?.message || String(e)
+        error: notFound ? '找不到摄像头。合着盖的话，可以拿 iPhone 当摄像头' : e?.message || String(e)
       })
       this.listCameras().catch(() => undefined)
     } finally {

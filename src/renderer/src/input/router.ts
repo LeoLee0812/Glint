@@ -2,14 +2,28 @@ import { input, type ButtonEvent } from './joycon'
 import { haptic, hapticCount, homeLight } from './haptics'
 import { wristStart, wristEnd, wristActive } from './wrist'
 import { focus, panes, switchSide, sideOfPane } from '../focus/focus'
-import { GRAN_ORDER, type Dir, type PaneAdapter } from '../focus/types'
+import { GRAN_ORDER, type Dir, type Granularity, type PaneAdapter } from '../focus/types'
 import { gaze } from '../gaze/engine'
-import { ask, abort, chatStore, addNote, popFork } from '../chat/chatStore'
+import { ask, abort, chatStore, popFork } from '../chat/chatStore'
 import { activeDoc, cycleDoc } from '../panes/docs'
 import { terminals, KEYS, type TermHandle } from '../panes/TerminalPane'
 import { la, uiStore, settingsStore, updateSettings, toast, rumble, screenToClient } from '../appState'
-import { onDwell, setSuggestHandler, setTerminalAlertHandler, setFactHandler, jevEnabled, looksLikePermissionPrompt, riskGate } from '../jev/jevBrain'
+import {
+  onDwell,
+  setSuggestHandler,
+  setTerminalAlertHandler,
+  setFactHandler,
+  jevEnabled,
+  looksLikePermissionPrompt,
+  riskGate,
+  jevHintStore,
+  showJevHint,
+  clearJevHint,
+  termAlertStore,
+  clearTermAlert
+} from '../jev/jevBrain'
 import { docsStore } from '../panes/docs'
+import { guideModal } from '../onboarding'
 
 // 按键路由：左手 Joy-Con 管左边（滚动、翻页、终端按键、对终端里的 Qwen Code 说话），
 // 右手 Joy-Con 管右边（微调焦点、解释/翻译/总结、按住问 AI）
@@ -47,13 +61,13 @@ function toggleJev(): void {
   const s = settingsStore.get().s
   if (!s) return
   if (!s.jev.apiKey) {
-    toast('Jev 还没配置 Key，去设置里填', 'warn')
+    toast('还没填 Jev 的 Key', 'warn')
     uiStore.patch({ showSettings: true })
     return
   }
   const on = !s.jevMode
   updateSettings((x) => ({ ...x, jevMode: on }))
-  toast(on ? 'Jev 模式开：先判断，再开口' : 'Jev 模式关', on ? 'jev' : 'info')
+  toast(on ? 'Jev 开了' : 'Jev 关了', on ? 'jev' : 'info')
   rumble(on ? 'done' : 'soft', 'R')
 }
 
@@ -83,9 +97,9 @@ la.bridge.onEvent((e) => {
   else if (e.state === 'error') {
     chatStore.patch({ asr: { active: false, text: '', target: asrTarget } })
     const tips: Record<string, [string, 'speech' | 'microphone' | null]> = {
-      speech_denied: ['语音识别没授权：系统设置 → 隐私与安全性 → 语音识别，给 Glint 打开', 'speech'],
-      mic_denied: ['麦克风没授权：系统设置 → 隐私与安全性 → 麦克风，给 Glint 打开', 'microphone'],
-      recognizer_unavailable: ['系统语音识别暂不可用（中文听写需要联网下载一次模型）', null]
+      speech_denied: ['语音识别没开权限，去系统设置里给 Glint 打开', 'speech'],
+      mic_denied: ['麦克风没开权限，去系统设置里给 Glint 打开', 'microphone'],
+      recognizer_unavailable: ['系统语音识别用不了，中文听写要先联网下载一次', null]
     }
     const [msg, pane] = tips[e.error || ''] || [`语音出错：${e.error}`, null]
     toast(msg, 'error', { ttl: 8000, action: pane ? { label: '打开设置', run: () => la.perm.openSettings(pane) } : undefined })
@@ -96,7 +110,7 @@ la.bridge.onEvent((e) => {
     if (asrTarget === 'terminal' && asrTerminal) {
       // 只打字不回车，确认无误再按十字键 → 回车
       asrTerminal.write(text)
-      toast('已输入到终端，按十字键 → 发送', 'info')
+      toast('打进终端了，按十字键 → 发送', 'info')
     } else {
       implicitCalibrate()
       ask('ask', { question: text })
@@ -110,10 +124,11 @@ function onButton(e: ButtonEvent): void {
   // 右摇杆松开 = 手腕精调结束；放在最前面，中途弹出校准 / 设置也要能收尾
   if (e.btn === 'RS' && !e.down) wristEnd()
   const u = uiStore.get()
-  if (u.showCalibration || u.showSettings || u.showHelp || u.showBooth) return
+  // 弹窗里（包括新手引导的前几步）按键只归弹窗，不去解释、翻译
+  if (u.showCalibration || u.showSettings || u.showHelp || u.showBooth || guideModal()) return
   const term = activeTerminal()
   // 左手在终端里有动作 = Qwen Code 的事你已经在处理了，心跳提醒别再跳
-  if (term && e.down && ['Up', 'Down', 'Left', 'Right', 'ZL', 'Minus'].includes(e.btn)) stopNag()
+  if (term && e.down && ['Up', 'Down', 'Left', 'Right', 'ZL', 'Minus'].includes(e.btn)) handledTerminal()
 
   if (!e.down) {
     if (e.btn === 'ZR' || e.btn === 'ZL') stopVoice()
@@ -123,12 +138,12 @@ function onButton(e: ButtonEvent): void {
     if (e.btn === 'Minus' && short) {
       if (u.side !== 'left') switchSide('left')
       else if (term) term.write(KEYS.shiftTab)
-      else toast('视线已经跟着左边的内容（+ 去右边）', 'info')
+      else toast('已经在左边了，按 + 去右边', 'info')
     }
     // + 短按：视线切到右边的 AI 回答
     if (e.btn === 'Plus' && short) {
       if (u.side !== 'right') switchSide('right')
-      else toast('视线已经跟着右边的回答（− 回左边，长按 + 开关 Jev）', 'info')
+      else toast('已经在右边了，按 − 回左边', 'info')
     }
     return
   }
@@ -140,11 +155,18 @@ function onButton(e: ButtonEvent): void {
 
   switch (e.btn) {
     // ----- 右手：对话 -----
-    case 'A':
+    case 'A': {
       implicitCalibrate()
-      ask('explain')
+      // Jev 在这段上提示过「卡住了」、焦点还停在这段：按「拆开讲」详细讲
+      const h = jevHintStore.get().hint
+      const st = focus.state.get()
+      const stuck = h?.kind === 'stuck' && st.mode === 'soft' && st.paneId === h.paneId && st.sel?.blockKey === h.blockKey
+      if (h) clearJevHint()
+      // 卡住说的是整段：不管现在选的是词还是句，都按整段拆开讲
+      ask('explain', stuck ? { depth: 2, gran: 'paragraph' } : {})
       rumble('tick', 'R')
       break
+    }
     case 'X':
       implicitCalibrate()
       ask('translate')
@@ -165,7 +187,7 @@ function onButton(e: ButtonEvent): void {
     case 'R':
       focus.cycleGran()
       // 粒度用几下「咔」表示，不用看屏幕：词 1 下、句 2 下、段 3 下、节 4 下
-      hapticCount(GRAN_ORDER.indexOf(focus.state.get().gran) + 1, 'R')
+      hapticCount(GRAN_ORDER.indexOf(focus.state.get().unit) + 1, 'R')
       break
     case 'RS': {
       // 按下 = 焦点跳到视线处；按住不放拧手腕 = 从这里逐词 / 逐行精调，松开落定（input/wrist.ts）
@@ -229,16 +251,16 @@ async function approveInTerminal(term: TermHandle): Promise<void> {
     return
   }
   const r = await riskGate(screen)
+  // 安全的直接放行，不留痕迹（判断记录里有一条）；有风险的三连震 + 一句提示，要再按一次
   if (!r || !r.risky) {
     term.write(KEYS.enter)
     rumble('tick', 'L')
-    if (r) addNote(`✅ Jev 看过了：${r.reason}，已放行`, [r.trace])
+    clearTermAlert()
     return
   }
   pendingApprove = Date.now()
   haptic('danger', 'L')
-  addNote(`⚠️ Jev 判断这个操作有风险（${r.reason}）。确定要放行，5 秒内再按一次十字键 →；不放行按 ← 打断`, [r.trace])
-  toast(`⚠️ 有风险（${r.reason}）：5 秒内再按一次 → 才放行`, 'warn', { ttl: 5000 })
+  toast(`有风险：${r.reason}。5 秒内再按一次 → 才放行，按 ← 不放`, 'warn', { ttl: 5000 })
 }
 
 // ---------- 摇杆（连续量）+ 眼动翻页 ----------
@@ -247,6 +269,8 @@ let repeatDir: Dir | null = null
 let nextRepeat = 0
 let repeatN = 0
 let pageArmed = true
+/** 右摇杆按住连发的最短间隔倍数（×55ms），按粒度 */
+const REPEAT_SLOW: Record<Granularity, number> = { word: 1, sentence: 2, paragraph: 4, section: 5 }
 let bottomSince = 0
 let autoCooldown = 0
 
@@ -257,7 +281,7 @@ function scrollTarget(): PaneAdapter | null {
 }
 
 function tick(t: number): void {
-  const busyUi = uiStore.get().showCalibration || uiStore.get().showSettings
+  const busyUi = uiStore.get().showCalibration || uiStore.get().showSettings || guideModal()
   if (!busyUi) {
     const s = input.sticks()
     // 左摇杆：上下滚动（推得越深越快），左右翻页
@@ -284,7 +308,8 @@ function tick(t: number): void {
       } else if (t >= nextRepeat) {
         repeatN++
         focus.step(dir, Math.max(0.5, 1 - repeatN * 0.05))
-        nextRepeat = t + Math.max(55, 160 - repeatN * 14)
+        // 按句 / 段 / 节走时连发慢一些，一眨眼翻过去好几段就找不着了
+        nextRepeat = t + Math.max(55 * REPEAT_SLOW[focus.state.get().gran], 160 - repeatN * 14)
       }
     } else if (mag < 0.3) repeatDir = null
 
@@ -332,16 +357,15 @@ focus.events.on('dwell', (d) => {
   onDwell(d, { aiReply: sideOfPane(d.paneId) === 'right' || !!doc?.title.startsWith('AI 回复') })
 })
 
-setFactHandler(({ trace, risk }) => {
-  addNote(`🔍 你盯着的这句带具体数字 / 出处，Jev 觉得可能不准（幻觉风险 ${risk.toFixed(1)}/2），建议核实一下原始来源。`, [trace])
-  rumble('soft', 'R')
+// Jev 的提醒不进对话区：在眼睛正看着的那段上冒个小签（GazeLayer 画），右手柄轻敲两下
+setFactHandler(({ paneId, blockKey }) => {
+  showJevHint({ kind: 'fact', paneId, blockKey })
+  haptic('jev', 'R')
 })
 
-setSuggestHandler(({ text, trace, analysis }) => {
-  addNote(`💡 Jev 觉得你可能卡在这段了（难度 ${analysis.difficulty.toFixed(1)}/3${analysis.jargon > 0.6 ? '，含术语' : ''}）。按 A 让我拆解。`, [trace])
-  rumble('soft', 'R')
-  toast('Jev：这段好像有点难，按 A 我帮你拆解', 'jev', { ttl: 5000, action: { label: '拆解', run: () => ask('explain') } })
-  void text
+setSuggestHandler(({ paneId, blockKey }) => {
+  showJevHint({ kind: 'stuck', paneId, blockKey })
+  haptic('jev', 'R')
 })
 
 function lookingAtTerminal(): boolean {
@@ -357,6 +381,12 @@ function stopNag(): void {
   nagTimer = null
 }
 
+/** 左手在终端里有动作 = 在处理了：心跳不再跳，标签上的紫点也收掉 */
+function handledTerminal(): void {
+  stopNag()
+  clearTermAlert()
+}
+
 function nag(left: number): void {
   stopNag()
   if (left <= 0) return
@@ -369,19 +399,21 @@ function nag(left: number): void {
   }, 10000)
 }
 
-setTerminalAlertHandler(({ state, trace, agent }) => {
-  const text =
+// 终端里的编程智能体在等你：不往对话区塞通知，终端标签上挂个紫点；没在看终端时左手柄心跳 + 一句提示
+setTerminalAlertHandler(({ state, agent, docId }) => {
+  if (docId) termAlertStore.set({ docId, state })
+  if (lookingAtTerminal()) return
+  haptic(state === 'stuck' ? 'alert' : 'heartbeat', 'L')
+  if (state === 'waiting_permission') nag(2)
+  toast(
     state === 'waiting_permission'
-      ? `⏳ ${agent} 在等你批准操作：十字键选选项，→ 放行（Jev 会先评风险）`
+      ? `${agent} 在等你批准，十字键 → 放行`
       : state === 'stuck'
-        ? `🔁 ${agent} 好像在原地打转（同样的失败反复出现）：按 ← 打断，或按住 ZL 给它换个思路`
-        : `❓ ${agent} 在问你问题：十字键选答案，或按住 ZL 直接说给它听`
-  addNote(text, [trace])
-  if (!lookingAtTerminal()) {
-    haptic(state === 'stuck' ? 'alert' : 'heartbeat', 'L')
-    if (state === 'waiting_permission') nag(2)
-    toast(state === 'waiting_permission' ? `${agent} 在等你拍板` : state === 'stuck' ? `${agent} 可能卡住了` : `${agent} 在问你问题`, 'jev', { ttl: 6000 })
-  }
+        ? `${agent} 好像卡住了，按 ← 打断`
+        : `${agent} 在问你，按住 ZL 直接说`,
+    'jev',
+    { ttl: 6000 }
+  )
 })
 
 // ---------- 右手柄 HOME 灯 = AI 状态灯：在想 / 在出字时呼吸，答完（或停掉）就灭 ----------

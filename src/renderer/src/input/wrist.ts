@@ -2,8 +2,10 @@ import { la } from '../appState'
 import { focus } from '../focus/focus'
 import { gaze } from '../gaze/engine'
 import { input } from './joycon'
+import type { Granularity } from '../focus/types'
 
-// 手腕精调：按下右摇杆 = 焦点先跳到视线处；按住不放拧手腕 = 焦点从那里跟着手走（左右转逐词、上下点逐行）；松开 = 落定。
+// 手腕精调：按下右摇杆 = 焦点先跳到视线处；按住不放拧手腕 = 焦点从那里跟着手走（左右转逐词、上下点逐行；
+// 粒度是句 / 段 / 节时一格一格往后 / 往前走，一格要拧得多一些）；松开 = 落定。
 // 眼睛负责跳到附近、手负责最后那一点（MAGIC pointing）：摇杆是一格一格推（速度控制），手腕是转多少走多少（位置控制），短距离快得多。
 // 做法像棘轮：陀螺仪角度累加，够一格走一步（focus.step 每步自己会「咔」一下），多出来的留着下一格用。
 // 松手时「按下那一刻的视线预测 → 最后落点」的差就是一条校准残差，喂给漂移校正，越用越准。
@@ -11,6 +13,8 @@ import { input } from './joycon'
 /** 转多少度走一个词 / 一行（手感参数） */
 const DEG_PER_WORD = 2.6
 const DEG_PER_LINE = 3.8
+/** 粒度是句 / 段 / 节时一格要拧得更多（左右上下都是往后 / 往前一格），手一抖就跳一段太灵了 */
+const UNIT_DEG: Record<Granularity, number> = { word: 0, sentence: 5, paragraph: 7, section: 9 }
 /** 方向：真机上觉得反了就改成 -1 */
 const SIGN = { x: 1, y: 1 }
 /** 一包（约 15ms）里最多走几步：猛甩一下不至于飞出去半页 */
@@ -63,21 +67,24 @@ export function feed(yaw: number, pitch: number): void {
   else if (Math.abs(dy) > 2 * Math.abs(dx)) dx *= 0.3
   accX += dx
   accY += dy
+  const big = UNIT_DEG[focus.state.get().gran]
+  const degX = big || DEG_PER_WORD
+  const degY = big || DEG_PER_LINE
   let n = 0
-  while (Math.abs(accX) >= DEG_PER_WORD && n < MAX_STEPS) {
+  while (Math.abs(accX) >= degX && n < MAX_STEPS) {
     const right = accX > 0
     focus.step(right ? 'right' : 'left')
-    accX -= right ? DEG_PER_WORD : -DEG_PER_WORD
+    accX -= right ? degX : -degX
     n++
   }
-  while (Math.abs(accY) >= DEG_PER_LINE && n < MAX_STEPS) {
+  while (Math.abs(accY) >= degY && n < MAX_STEPS) {
     const up = accY > 0
     focus.step(up ? 'up' : 'down')
-    accY -= up ? DEG_PER_LINE : -DEG_PER_LINE
+    accY -= up ? degY : -degY
     n++
   }
   // 这一包没走完的（猛甩）直接扔掉；留在满格上的话，下一包一点点抖动就会多走一步
-  if (Math.abs(accX) >= DEG_PER_WORD) accX = 0
-  if (Math.abs(accY) >= DEG_PER_LINE) accY = 0
+  if (Math.abs(accX) >= degX) accX = 0
+  if (Math.abs(accY) >= degY) accY = 0
   steps += n
 }

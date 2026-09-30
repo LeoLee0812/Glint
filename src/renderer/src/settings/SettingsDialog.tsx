@@ -12,10 +12,10 @@ type Tab = 'providers' | 'models' | 'jev' | 'gaze' | 'misc'
 
 /** 实时小人能选的百炼图像编辑模型（第一个是默认） */
 const AVATAR_MODELS: Array<[string, string]> = [
-  ['qwen-image-3.0-pro', '千问图像 3.0 Pro（最快、最像）'],
+  ['qwen-image-3.0-pro', '千问图像 3.0 Pro（推荐）'],
   ['qwen-image-3.0', '千问图像 3.0'],
   ['qwen-image-2.0-pro', '千问图像 2.0 Pro'],
-  ['qwen-image-edit-max', '千问图像编辑 Max（更像盲盒公仔）'],
+  ['qwen-image-edit-max', '千问图像编辑 Max（盲盒风）'],
   ['qwen-image-edit-plus', '千问图像编辑 Plus']
 ]
 
@@ -28,13 +28,13 @@ function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Pr
   const test = async () => {
     setBusy('测试中…')
     const r = await la.settings.testProvider(p, p.models[0] || '')
-    setBusy(r.ok ? `✅ ${r.ms}ms：${(r.text || '').slice(0, 20)}` : `❌ ${r.error?.slice(0, 80)}`)
+    setBusy(r.ok ? `✅ 通了，${r.ms}ms` : `❌ ${r.error?.slice(0, 80)}`)
   }
   const fetchModels = async () => {
     setBusy('获取中…')
     try {
       const list = await la.settings.listModels(p)
-      setBusy(`拿到 ${list.length} 个模型，已放进候选（前 30 个）`)
+      setBusy(`找到 ${list.length} 个模型，最多加 30 个进列表`)
       const merged = Array.from(new Set([...p.models, ...list.slice(0, 30)]))
       setModelsText(merged.join(', '))
       onChange({ ...p, models: merged })
@@ -69,7 +69,7 @@ function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Pr
         </div>
       </label>
       <label>
-        模型（逗号分隔，第一个用来测试）
+        模型（逗号隔开）
         <input
           value={modelsText}
           onChange={(e) => setModelsText(e.target.value)}
@@ -77,7 +77,7 @@ function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Pr
         />
       </label>
       <label>
-        附加请求字段（JSON，可空）
+        附加参数（JSON）
         <input
           value={extra}
           placeholder='如 {"enable_thinking": false}'
@@ -87,7 +87,7 @@ function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Pr
             try {
               onChange({ ...p, extraBody: JSON.parse(extra) })
             } catch {
-              toast('附加字段不是合法 JSON', 'warn')
+              toast('附加参数不是有效的 JSON', 'warn')
             }
           }}
         />
@@ -135,13 +135,12 @@ function TdPairing(): React.JSX.Element {
       <div className="small">
         {st?.listening ? (
           <>
-            这台 Mac 在手机上显示为 <b>「{st.name}」</b>
-            <span className="dim">（UDP 端口 {st.port}）</span>
+            这台 Mac 在手机上叫 <b title={`端口 ${st.port}`}>「{st.name}」</b>
           </>
         ) : st?.error ? (
           <span className="warn-text">收不了 iPhone 数据：{st.error}</span>
         ) : (
-          '正在开启接收…'
+          '正在准备…'
         )}
       </div>
       {st?.devices.map((d) => (
@@ -151,10 +150,10 @@ function TdPairing(): React.JSX.Element {
             {d.model && <span className="dim small"> · {d.model}</span>}
             <div className="small dim">
               {d.paired
-                ? `已配对 · ${d.fps} fps${d.loss > 0.01 ? ` · 丢包 ${Math.round(d.loss * 100)}%` : ''} · ${d.tracked ? '看得到脸' : '看不到脸'}${d.therm && d.therm >= 2 ? ' · 手机偏热，已降帧' : ''}${st.active === d.dev ? ' · 正在用' : ''}`
+                ? `${st.active === d.dev ? '正在用' : '已配对'}，${d.tracked ? '看得到脸' : '看不到脸'}${d.loss > 0.01 ? '，网络不太稳' : ''}${d.therm && d.therm >= 2 ? '，手机有点热' : ''}`
                 : d.badCode
                   ? '手机上换过配对码，要重新输入'
-                  : '还没配对：输入手机上显示的 4 位配对码'}
+                  : '输入手机上的 4 位配对码'}
             </div>
           </div>
           {d.paired ? (
@@ -181,15 +180,13 @@ function TdPairing(): React.JSX.Element {
         </div>
       ))}
       {st?.listening && !st.devices.length && (
-        <p className="dim small">
-          还没发现手机：iPhone 上打开 Glint Eye，在列表里点「{st.name}」。手机和 Mac 连同一个 Wi‑Fi；没有 Wi‑Fi 时 Mac 连手机的个人热点，其它不变。
-        </p>
+        <p className="dim small">还没找到手机。iPhone 上打开 Glint Eye，点「{st.name}」，两边要连同一个 Wi‑Fi 或热点。</p>
       )}
       {offline.map((p) => (
         <div key={p.dev} className="td-dev">
           <div className="grow">
             <b>{p.name}</b>
-            <div className="small dim">已配对 · 现在不在线</div>
+            <div className="small dim">已配对，不在线</div>
           </div>
           <button className="btn sm ghost" onClick={() => la.truedepth.unpair(p.dev)}>
             取消配对
@@ -201,7 +198,7 @@ function TdPairing(): React.JSX.Element {
 }
 
 function ModelSelect({ s, value, onChange }: { s: Settings; value: ModelRef; onChange: (m: ModelRef) => void }): React.JSX.Element {
-  const opts = s.providers.flatMap((p) => p.models.map((m) => ({ v: `${p.id}::${m}`, label: `${p.name} · ${m}${p.apiKey ? '' : '（缺 Key）'}` })))
+  const opts = s.providers.flatMap((p) => p.models.map((m) => ({ v: `${p.id}::${m}`, label: `${p.name} · ${m}${p.apiKey ? '' : '（没填 Key）'}` })))
   return (
     <select value={`${value.providerId}::${value.model}`} onChange={(e) => {
       const [providerId, model] = e.target.value.split('::')
@@ -259,11 +256,11 @@ export function SettingsDialog(): React.JSX.Element | null {
       // 换了输入源就按新的重启；原深感换了摆放位置，要重新校准才准
       if (before && before.source !== draft.gaze.source) {
         await gaze.start(draft.gaze.cameraId || undefined)
-        toast(draft.gaze.source === 'truedepth' ? '眼动输入源换成 iPhone 原深感了' : '眼动输入源换回 Mac 摄像头了', 'ok')
-        if (!gaze.isCalibrated()) toast('这个输入源还没校准过：点右上角「校准」', 'info', { ttl: 6000 })
+        toast(draft.gaze.source === 'truedepth' ? '换成 iPhone 原深感了' : '换回 Mac 摄像头了', 'ok')
+        if (!gaze.isCalibrated()) toast('这个输入源还没校准，点右上角「校准」', 'info', { ttl: 6000 })
       } else {
-        if (before && draft.gaze.source === 'truedepth' && before.tdMount !== draft.gaze.tdMount) toast('换了手机摆放位置，重新校准一次才准', 'warn')
-        toast('设置已保存', 'ok')
+        if (before && draft.gaze.source === 'truedepth' && before.tdMount !== draft.gaze.tdMount) toast('手机换了位置，要重新校准', 'warn')
+        toast('已保存', 'ok')
       }
     }
     uiStore.patch({ showSettings: false })
@@ -273,21 +270,23 @@ export function SettingsDialog(): React.JSX.Element | null {
   return (
     <div className="modal-mask" onClick={() => close(true)}>
       <div className="modal settings" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-tabs">
-          {(
-            [
-              ['providers', '模型服务'],
-              ['models', '模型分配'],
-              ['jev', 'Jev 判断'],
-              ['gaze', '眼动'],
-              ['misc', '其他']
-            ] as Array<[Tab, string]>
-          ).map(([k, v]) => (
-            <button key={k} className={`tabbtn ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>
-              {v}
-            </button>
-          ))}
-          <span className="grow" />
+        {/* 标签栏吸顶，底色不透明：往下滚时表单不会从它底下透出来 */}
+        <div className="settings-head">
+          <div className="settings-tabs">
+            {(
+              [
+                ['providers', '模型服务'],
+                ['models', '模型分配'],
+                ['jev', 'Jev 判断'],
+                ['gaze', '眼动'],
+                ['misc', '其他']
+              ] as Array<[Tab, string]>
+            ).map(([k, v]) => (
+              <button key={k} className={`tabbtn ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>
+                {v}
+              </button>
+            ))}
+          </div>
           <button className="btn sm primary" onClick={() => close(true)}>
             保存并关闭
           </button>
@@ -296,7 +295,6 @@ export function SettingsDialog(): React.JSX.Element | null {
         <div className="settings-body">
           {tab === 'providers' && (
             <>
-              <p className="dim small">Key 只存在本机（~/Library/Application Support/LookAsk/settings.json，权限 600），请求从主进程直接发给服务商。</p>
               {draft.providers.map((p, i) => (
                 <ProviderCard
                   key={p.id}
@@ -324,25 +322,24 @@ export function SettingsDialog(): React.JSX.Element | null {
           {tab === 'models' && (
             <div className="form">
               <label>
-                回答（解释 / 总结 / 提问）
+                回答
                 <ModelSelect s={draft} value={draft.chatModel} onChange={(m) => set({ chatModel: m })} />
               </label>
               <label>
-                快速（翻译）
+                翻译
                 <ModelSelect s={draft} value={draft.fastModel} onChange={(m) => set({ fastModel: m })} />
               </label>
               <label>
-                看图（截图问 / Jev 判断要看图时）
+                看图
                 <ModelSelect s={draft} value={draft.visionModel} onChange={(m) => set({ visionModel: m })} />
               </label>
-              <p className="dim small">参赛提示：天猫 AI 黑客松「效率进化」赛道的阿里云特别赛题是「基于 Qwen 大模型的科研提效」，默认三路都用千问。</p>
             </div>
           )}
 
           {tab === 'jev' && (
             <div className="form">
               <label>
-                网关预设
+                预设
                 <select
                   value=""
                   onChange={(e) => {
@@ -350,7 +347,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                     if (pr) set({ jev: { ...draft.jev, baseUrl: pr.baseUrl, model: pr.model } })
                   }}
                 >
-                  <option value="">选一个预设填入地址和模型…</option>
+                  <option value="">选一个，自动填地址和模型</option>
                   {presets.map((p) => (
                     <option key={p.name} value={p.name}>
                       {p.name}
@@ -371,7 +368,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                 <input type="password" value={draft.jev.apiKey} onChange={(e) => set({ jev: { ...draft.jev, apiKey: e.target.value.trim() } })} />
               </label>
               <label>
-                每日输入 token 上限（Key 不能充值，超了当天自动停）
+                每天 token 上限
                 <input
                   type="number"
                   value={draft.jev.dailyTokenCap}
@@ -388,7 +385,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                     const r = await la.jev.judge('这篇论文用自注意力替代了循环结构。', {
                       term: { type: 'noul', instructions: 'The text mentions a machine learning architecture concept' }
                     })
-                    setJevTest(r.ok ? `✅ ${r.ms}ms · ${r.inputTokens} tok · 判断概率 ${Math.round((r.answers.term?.noul ?? 0) * 100)}%${r.cached ? '（缓存）' : ''}` : `❌ ${r.error}`)
+                    setJevTest(r.ok ? `✅ 通了，${r.ms}ms` : `❌ ${r.error}`)
                   }}
                 >
                   测试 Jev
@@ -397,9 +394,8 @@ export function SettingsDialog(): React.JSX.Element | null {
               </div>
               <label className="check">
                 <input type="checkbox" checked={draft.jevMode} onChange={(e) => set({ jevMode: e.target.checked })} />
-                开启 Jev 模式（长按右手柄 + 也能切）
+                开启 Jev 模式
               </label>
-              <p className="dim small">Jev 只判断不写字：段落难度、是否卡住、提问意图、终端里的 Qwen Code 是否在等你批准。同样的内容命中本地缓存不重复花钱。</p>
             </div>
           )}
 
@@ -411,14 +407,14 @@ export function SettingsDialog(): React.JSX.Element | null {
                   value={draft.gaze.source}
                   onChange={(e) => set({ gaze: { ...draft.gaze, source: e.target.value as Settings['gaze']['source'] } })}
                 >
-                  <option value="webcam">Mac 摄像头（平面画面）</option>
-                  <option value="truedepth">iPhone 原深感（三维头姿，头动不偏）</option>
+                  <option value="webcam">Mac 摄像头</option>
+                  <option value="truedepth">iPhone 原深感</option>
                 </select>
               </label>
               {td ? (
                 <>
                   <label>
-                    iPhone 摆放位置
+                    iPhone 放在哪
                     <select value={draft.gaze.tdMount} onChange={(e) => set({ gaze: { ...draft.gaze, tdMount: e.target.value as TdMount } })}>
                       {(Object.keys(MOUNT_LABEL) as TdMount[]).map((k) => (
                         <option key={k} value={k}>
@@ -428,9 +424,6 @@ export function SettingsDialog(): React.JSX.Element | null {
                     </select>
                   </label>
                   <TdPairing />
-                  <p className="dim small">
-                    手机竖放、前置镜头对着脸、离脸 40～70 厘米；放好后别再碰它，碰了要重新校准。原深感按三维头姿换算视线，解决「头一挪、一歪就整体偏」和暗光不稳；绝对精度只小幅提升，最后精确到词仍然靠吸附和摇杆。两种输入源的校准分开存，切换不用重校。
-                  </p>
                 </>
               ) : (
                 <>
@@ -445,7 +438,6 @@ export function SettingsDialog(): React.JSX.Element | null {
                       ))}
                     </select>
                   </label>
-                  <p className="dim small">iPhone 放在屏幕上沿当连续互通相机，画质比内置摄像头好；换摄像头后要重新校准。</p>
                 </>
               )}
               <label>
@@ -454,12 +446,12 @@ export function SettingsDialog(): React.JSX.Element | null {
                   value={draft.gaze.calibrationPoints}
                   onChange={(e) => set({ gaze: { ...draft.gaze, calibrationPoints: Number(e.target.value) as 9 | 17 } })}
                 >
-                  <option value={17}>17 点（约 30 秒，更准）</option>
-                  <option value={9}>9 点（约 15 秒）</option>
+                  <option value={17}>17 个点，更准</option>
+                  <option value={9}>9 个点，更快</option>
                 </select>
               </label>
               <label>
-                平滑：{Math.round(draft.gaze.smoothing * 100)}%（越高越稳、越慢）
+                平滑 {Math.round(draft.gaze.smoothing * 100)}%
                 <input
                   type="range"
                   min={0}
@@ -470,7 +462,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                 />
               </label>
               <label>
-                吸附强度：{Math.round((draft.gaze.magnet ?? 0.7) * 100)}%（越高，视线圈越容易吸住附近的词、吸得越牢，软焦点也越不容易跳段；40% 左右是最早的手感）
+                吸附 {Math.round((draft.gaze.magnet ?? 0.7) * 100)}%
                 <input
                   type="range"
                   min={0}
@@ -491,7 +483,7 @@ export function SettingsDialog(): React.JSX.Element | null {
               </label>
               <label className="check">
                 <input type="checkbox" checked={draft.gaze.autoScroll} onChange={(e) => set({ gaze: { ...draft.gaze, autoScroll: e.target.checked } })} />
-                眼动翻页（盯着正文底部 2 秒自动下翻）
+                盯着页底自动翻页
               </label>
               {!td && (
                 <label className="check">
@@ -500,7 +492,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                     checked={draft.gaze.headComp !== false}
                     onChange={(e) => set({ gaze: { ...draft.gaze, headComp: e.target.checked } })}
                   />
-                  头动补偿：头挪一挪、转一转，视线照样准，不用坐回原位（打开后要重新校准一次）
+                  头动补偿
                 </label>
               )}
               <div className="row">
@@ -509,34 +501,34 @@ export function SettingsDialog(): React.JSX.Element | null {
                   onClick={async () => {
                     await updateSettings(() => draft)
                     await gaze.start(draft.gaze.cameraId || undefined)
-                    toast(td ? '已切到 iPhone 原深感，等手机连上' : '摄像头已重启', 'ok')
+                    toast(td ? '切到 iPhone 了，等手机连上' : '摄像头重启了', 'ok')
                   }}
                 >
-                  {td ? '应用并开始接收 iPhone' : '用新设置重启摄像头'}
+                  {td ? '开始接收 iPhone' : '重启摄像头'}
                 </button>
                 <button className="btn sm ghost" onClick={() => gaze.resetDrift()}>
                   清除漂移校正
                 </button>
-                <button className="btn sm ghost" onClick={() => gaze.clearModel()} title="只删当前输入源的校准">
-                  删除{g.source === 'truedepth' ? '原深感' : '摄像头'}校准模型
+                <button className="btn sm ghost" onClick={() => gaze.clearModel()}>
+                  删除{g.source === 'truedepth' ? '原深感' : '摄像头'}校准
                 </button>
               </div>
 
               <h3 className="settings-sub">实时小人</h3>
               <label className="check">
                 <input type="checkbox" checked={draft.avatar.show} onChange={(e) => set({ avatar: { ...draft.avatar, show: e.target.checked } })} />
-                在角落显示实时小人（跟着你的头动，坐偏了告诉你往哪挪）
+                显示实时小人
               </label>
               <div className="row">
                 <label className="grow">
-                  用哪个 Key（阿里云百炼）
+                  用哪个百炼 Key
                   <select value={draft.avatar.providerId} onChange={(e) => set({ avatar: { ...draft.avatar, providerId: e.target.value } })}>
                     {draft.providers
                       .filter((p) => /aliyuncs\.com/.test(p.baseUrl))
                       .map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
-                          {p.apiKey ? '' : '（缺 Key）'}
+                          {p.apiKey ? '' : '（没填 Key）'}
                         </option>
                       ))}
                   </select>
@@ -563,15 +555,14 @@ export function SettingsDialog(): React.JSX.Element | null {
                     uiStore.patch({ showSettings: false, showBooth: true })
                   }}
                 >
-                  {av.busy ? '小人生成中…' : av.img ? '重新拍照生成' : '拍大头照生成小人'}
+                  {av.busy ? '正在生成…' : av.img ? '重新拍一张' : '拍照生成小人'}
                 </button>
                 {av.img && (
                   <button className="btn sm ghost" onClick={() => clearAvatar()}>
-                    删掉小人（换回默认形象）
+                    删掉小人
                   </button>
                 )}
               </div>
-              <p className="dim small">照片只发给阿里云百炼，不存本地；生成的小人存在本机。一次约半分钟。</p>
             </div>
           )}
 
@@ -589,10 +580,6 @@ export function SettingsDialog(): React.JSX.Element | null {
                 Shell
                 <input value={draft.terminal.shell} onChange={(e) => set({ terminal: { ...draft.terminal, shell: e.target.value } })} />
               </label>
-              <p className="dim small">
-                终端里点「启动 Qwen Code」会自动带上「千问 · 阿里云百炼」的 Key，默认模型 qwen3.8-max；进去后输入 /model 可换更便宜的 qwen3.7-plus / qwen3.8-flash。
-                你自己在 ~/.qwen/settings.json 里配了别的（Coding Plan / Token Plan），以你的为准。
-              </p>
             </div>
           )}
         </div>

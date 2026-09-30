@@ -73,7 +73,7 @@ export async function openFile(f: File): Promise<void> {
   } else if (/\.(md|markdown|txt)$/.test(lower)) {
     openDoc({ kind: 'md', title: name.replace(/\.(md|markdown|txt)$/i, ''), text: await f.text(), path })
   } else {
-    toast(`暂不支持 ${name}，支持 .md / .pdf / .txt`, 'warn')
+    toast(`打不开 ${name}，只支持 .md / .pdf / .txt`, 'warn')
   }
 }
 

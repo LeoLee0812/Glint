@@ -56,7 +56,7 @@ export async function generateAvatar(photo: string): Promise<boolean> {
     return false
   }
   avatarStore.patch({ busy: false, img: r.dataUrl, error: null })
-  toast(`你的小人画好了（用了 ${Math.round(r.ms / 1000)} 秒）`, 'ok')
+  toast('小人画好了', 'ok')
   rumble('done')
   return true
 }

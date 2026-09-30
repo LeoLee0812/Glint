@@ -190,18 +190,18 @@ export function HeadGuide(): React.JSX.Element | null {
 
   const text: Record<Phase, [string, string]> = td
     ? {
-        nocam: ['iPhone 没连上', st.link?.state === 'unpaired' ? '到设置 → 眼动 输入配对码' : '打开手机上的 Glint Eye'],
-        nocal: ['还没校准', '原深感校准一次就行，之后头动了视线也准'],
-        lost: ['手机看不到你的脸', '前置镜头对着脸，别挡住'],
+        nocam: ['iPhone 没连上', st.link?.state === 'unpaired' ? '去设置里输配对码' : '打开手机上的 Glint Eye'],
+        nocal: ['还没校准', '校准一次就行'],
+        lost: ['手机看不到你的脸', '镜头对着脸，别挡住'],
         off: [advice?.main || '偏得有点多', advice?.sub || '回到手机镜头前面'],
-        good: ['位置正好', '头动了视线也准，放松坐']
+        good: ['位置正好', '放松坐就行']
       }
     : {
         nocam: ['摄像头没开', '点一下打开'],
-        nocal: ['还没校准', '校准后我会记住你坐的位置'],
-        lost: ['看不到你的脸', '回到摄像头正前方，脸完整露出来'],
-        off: [advice?.main || '偏了', advice?.sub || (st.headComp ? '偏太多了，视线会不准' : '回到虚线圈里')],
-        good: ['位置正好', st.headComp ? '头稍微动一动，视线照样准' : '和校准时一致，视线会准']
+        nocal: ['还没校准', '先校准一次'],
+        lost: ['看不到你的脸', '坐回摄像头前面'],
+        off: [advice?.main || '偏了', advice?.sub || (st.headComp ? '偏太多，视线会不准' : '回到虚线圈里')],
+        good: ['位置正好', st.headComp ? '稍微动动没关系' : '和校准时一样']
       }
   const [main, sub] = text[phase]
   const genSec = av.busy ? Math.round((Date.now() - av.since) / 1000) : 0
@@ -276,16 +276,16 @@ export function HeadGuide(): React.JSX.Element | null {
                 uiStore.patch({ showBooth: true })
               }}
             >
-              {av.img ? '重新拍照换个小人' : '拍张大头照生成小人'}
+              {av.img ? '重拍一张' : '拍照生成小人'}
             </button>
             <button
               onClick={() => {
                 setMenu(false)
                 updateSettings((x) => ({ ...x, avatar: { ...x.avatar, show: false } }))
-                toast('小人藏起来了：设置 → 眼动 → 实时小人 里可以再打开', 'info', { ttl: 5000 })
+                toast('小人藏起来了，设置 → 眼动里能再打开', 'info', { ttl: 5000 })
               }}
             >
-              先藏起来
+              藏起来
             </button>
           </div>
         )}
@@ -295,11 +295,11 @@ export function HeadGuide(): React.JSX.Element | null {
           <i />
           {main}
         </div>
-        <div className="buddy-sub">{av.busy ? `小人生成中… ${genSec}s（一般半分钟）` : sub}</div>
+        <div className="buddy-sub">{av.busy ? `正在画… ${genSec} 秒` : sub}</div>
         {loud && phase === 'off' && (
           <div className="buddy-actions">
-            <button className="btn sm" onClick={() => uiStore.patch({ showCalibration: true, calibrationKind: 'full' })}>
-              就在这儿重新校准
+            <button className="btn sm" onClick={() => uiStore.patch({ showCalibration: true })}>
+              在这儿重新校准
             </button>
             <button className="btn sm ghost" onClick={snooze}>
               稍后
@@ -309,7 +309,7 @@ export function HeadGuide(): React.JSX.Element | null {
         {!av.img && !av.busy && !(loud && phase === 'off') && (
           <button className="buddy-cta" onClick={() => uiStore.patch({ showBooth: true })}>
             <Icon name="camera" />
-            拍照生成我的小人
+            拍照生成小人
           </button>
         )}
       </div>

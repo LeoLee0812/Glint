@@ -446,7 +446,7 @@ class GazeEngine {
       return {
         cv: m.cvErrorPx,
         ms: performance.now() - t0,
-        note: odd ? `眼睛转角的校正量不太正常（${gx.toFixed(2)} / ${gy.toFixed(2)}），多半是校准时没盯住点，或者手机被碰动了` : undefined
+        note: odd ? '这次结果有点怪，可能没盯住点，或者手机被碰了。最好再校准一次' : undefined
       }
     }
     const { model, ms } = await this.fit(input)

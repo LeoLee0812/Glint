@@ -151,13 +151,6 @@ class InputHub {
     return { L: s.L.connected || s.P.connected, R: s.R.connected || s.P.connected }
   }
 
-  /** 连着的手柄是不是全都放在桌上了（一只都没连 = false） */
-  allResting(): boolean {
-    const s = this.status.get()
-    const on = (['L', 'R', 'P'] as const).filter((k) => s[k].connected)
-    return on.length > 0 && on.every((k) => s[k].resting)
-  }
-
   onButton(fn: (e: ButtonEvent) => void): () => void {
     return this.events.on('button', fn)
   }
@@ -166,7 +159,8 @@ class InputHub {
     return this.events.on('action', fn)
   }
 
-  // ---------- 键盘兜底：没连手柄也能完整体验，演示时也更稳 ----------
+  // ---------- 键盘：没手柄时只留五个核心功能 ----------
+  // ⌥ + 方向键 移焦点、⌥↩ 解释、⌥T 翻译、⌥S 总结、按住 ⌥空格 说话；Esc 等于 B。其余操作用鼠标点界面
 
   private typingTarget(e: KeyboardEvent): boolean {
     const el = e.target as HTMLElement | null
@@ -181,23 +175,14 @@ class InputHub {
         case 'Enter': return 'A'
         case 'KeyT': return 'X'
         case 'KeyS': return 'Y'
-        case 'KeyG': return 'R'
         case 'Space': return 'ZR'
-        case 'KeyV': return 'ZL'
-        case 'KeyC': return 'Capture'
-        case 'KeyJ': return 'Plus'
-        case 'Period': return 'RS'
-        case 'KeyD': return 'Minus'
-        case 'KeyL': return 'L'
-        case 'KeyH': return 'Home'
-        case 'KeyA': return 'LS'
       }
     }
     return null
   }
 
   private kbCodes = new Map<string, Btn>()
-  private kbArrows = new Map<string, 'l' | 'r'>()
+  private kbArrows = new Map<string, 'r'>()
 
   private onKey(e: KeyboardEvent, down: boolean): void {
     const arrows = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
@@ -223,11 +208,11 @@ class InputHub {
       if (this.kbCodes.has(e.code) || this.kbArrows.has(e.code)) e.preventDefault()
       return
     }
-    // ⌥ + 方向键 = 右摇杆（移动焦点）；⌥ + ⇧ + 方向键 = 左摇杆（滚动）
-    if (e.altKey && !e.metaKey && arrows.includes(e.code)) {
+    // ⌥ + 方向键 = 右摇杆（移动焦点）
+    if (e.altKey && !e.metaKey && !e.shiftKey && arrows.includes(e.code)) {
       e.preventDefault()
       e.stopPropagation()
-      const side = e.shiftKey ? 'l' : 'r'
+      const side = 'r'
       this.kbArrows.set(e.code, side)
       if (e.code === 'ArrowUp') this.kbStick[`${side}y`] = 1
       if (e.code === 'ArrowDown') this.kbStick[`${side}y`] = -1

@@ -87,7 +87,8 @@ const api = {
   },
   perm: {
     status: (): Promise<{ camera: string; microphone: string }> => ipcRenderer.invoke('perm:status'),
-    openSettings: (pane: 'camera' | 'microphone' | 'speech') => ipcRenderer.invoke('perm:openSettings', pane)
+    /** 打开系统设置的某一页：隐私权限，或者蓝牙（新手引导里连 Joy-Con） */
+    openSettings: (pane: 'camera' | 'microphone' | 'speech' | 'bluetooth') => ipcRenderer.invoke('perm:openSettings', pane)
   },
   file: {
     open: () => ipcRenderer.invoke('file:open'),

@@ -10,11 +10,13 @@ export { looksLikePermissionPrompt }
 
 // Jev 模式 =「先判断，再开口」：Jev 只做判断（便宜、带概率），决定什么时候插话、怎么答；真正写字交给大模型
 // 规则：state 用中文原文，问题和选项用英文（准确率更高）；数字先在这里分档成文字再给 Jev（它不擅长读数字）
+// 判断结果不往对话区里塞：要提醒的出在眼睛正看着的那段上（jevHintStore → GazeLayer 画的小签）+ 手柄轻敲，
+// 终端里的提醒挂在终端标签上（termAlertStore），全部判断用大白话记一条（summary），顶栏 Jev 药丸点开能看
 
 export interface JevTrace {
   id: string
   t: number
-  kind: 'block' | 'stuck' | 'route' | 'terminal'
+  kind: 'block' | 'stuck' | 'route' | 'terminal' | 'fact'
   title: string
   state: string
   answers: Record<string, JevAnswer>
@@ -22,6 +24,40 @@ export interface JevTrace {
   cached: boolean
   ms: number
   error?: string
+  /** 这次判断得出了什么，一句大白话（判断记录里显示） */
+  summary?: string
+}
+
+/** 眼睛正看着的那段上冒的小签：stuck = 卡住了（按 A 拆开讲），fact = 这句数字可能不准 */
+export interface JevHint {
+  kind: 'stuck' | 'fact'
+  paneId: string
+  blockKey: string
+  at: number
+}
+
+export const jevHintStore = createStore<{ hint: JevHint | null }>({ hint: null })
+
+let hintTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 冒一个小签：卡住了留 12 秒，核实提醒留 8 秒；眼睛挪到别的段就不画（GazeLayer 判断） */
+export function showJevHint(h: Omit<JevHint, 'at'>): void {
+  if (hintTimer) clearTimeout(hintTimer)
+  jevHintStore.set({ hint: { ...h, at: Date.now() } })
+  hintTimer = setTimeout(clearJevHint, h.kind === 'stuck' ? 12000 : 8000)
+}
+
+export function clearJevHint(): void {
+  if (hintTimer) clearTimeout(hintTimer)
+  hintTimer = null
+  if (jevHintStore.get().hint) jevHintStore.set({ hint: null })
+}
+
+/** 终端里的编程智能体在等你（批准 / 回答）：挂在对应终端的标签上 */
+export const termAlertStore = createStore<{ docId: string | null; state: string | null }>({ docId: null, state: null })
+
+export function clearTermAlert(): void {
+  if (termAlertStore.get().docId) termAlertStore.set({ docId: null, state: null })
 }
 
 export interface BlockAnalysis {
@@ -59,6 +95,12 @@ async function run(kind: JevTrace['kind'], title: string, state: string, questio
   const usage = await la.jev.usage()
   jevStore.set((s) => ({ traces: [trace, ...s.traces].slice(0, 40), usage, busy: Math.max(0, s.busy - 1) }))
   return trace
+}
+
+/** 给一条判断补上大白话结论 */
+function summarize(tr: JevTrace, text: string): void {
+  tr.summary = text
+  jevStore.set((s) => ({ ...s, traces: s.traces.map((t) => (t.id === tr.id ? { ...t, summary: text } : t)) }))
 }
 
 // ---------- 1. 看段落：难度 / 术语 / 类型 ----------
@@ -121,6 +163,7 @@ export async function analyzeBlock(text: string): Promise<BlockAnalysis | null> 
       kind: tr.answers.kind?.choice ?? 'prose'
     }
     analyses.set(key, a)
+    summarize(tr, `这段${difficultyLevel(a.difficulty)}${a.jargon > 0.6 ? '，有术语' : ''}`)
     return a
   } finally {
     pendingBlocks.delete(key)
@@ -129,7 +172,7 @@ export async function analyzeBlock(text: string): Promise<BlockAnalysis | null> 
 
 // ---------- 2. 读者卡住了吗：停留和回看分档成文字，交给 Jev 决定要不要主动插话 ----------
 
-type SuggestHandler = (s: { text: string; trace: JevTrace; analysis: BlockAnalysis }) => void
+type SuggestHandler = (s: { text: string; trace: JevTrace; analysis: BlockAnalysis; paneId: string; blockKey: string }) => void
 let onSuggest: SuggestHandler | null = null
 export function setSuggestHandler(fn: SuggestHandler): void {
   onSuggest = fn
@@ -162,7 +205,7 @@ export async function onDwell(d: BlockDwell, opts: { aiReply?: boolean } = {}): 
   if (!jevEnabled()) return
   // AI 写的内容不判断难度，改成判断「这句要不要核实」
   if (opts.aiReply) {
-    if (d.dwellMs >= 2500) await factCheck(d.text)
+    if (d.dwellMs >= 2500) await factCheck(d.text, d)
     return
   }
   if (d.text.trim().length < 24) return
@@ -191,9 +234,10 @@ export async function onDwell(d: BlockDwell, opts: { aiReply?: boolean } = {}): 
     }
   })
   const p = tr.answers.stuck?.noul ?? 0
+  summarize(tr, p >= 0.65 ? '你好像卡在这段了，提示了「A 拆开讲」' : '没卡住，不打扰')
   if (p >= 0.65) {
     suggested.add(key)
-    onSuggest?.({ text: d.text, trace: tr, analysis: a })
+    onSuggest?.({ text: d.text, trace: tr, analysis: a, paneId: d.paneId, blockKey: d.blockKey })
   }
 }
 
@@ -275,14 +319,21 @@ export async function routeQuestion(
     const i = Number(t.choice.slice(1)) - 1
     if (i >= 0 && i < candidates.length) target = i
   }
-  return {
-    // 把握度低就不改写动作，按用户原话自由回答
-    action: conf >= 0.55 ? INTENT_TO_ACTION[intent] ?? 'ask' : 'ask',
-    needsImage: (tr.answers.needs_image?.noul ?? 0) >= 0.6,
-    depth: tr.answers.depth?.score ?? 1,
-    target,
-    trace: tr
-  }
+  // 把握度低就不改写动作，按用户原话自由回答
+  const action = conf >= 0.55 ? INTENT_TO_ACTION[intent] ?? 'ask' : 'ask'
+  const needsImage = (tr.answers.needs_image?.noul ?? 0) >= 0.6
+  const bits = [action !== 'ask' ? `按「${ACTION_NAME[action] ?? action}」答` : '', target !== null ? `指第 ${target + 1} 句` : '', needsImage ? '带上截图' : '']
+  summarize(tr, `你的问题：${bits.filter(Boolean).join('，') || '照原话答'}`)
+  return { action, needsImage, depth: tr.answers.depth?.score ?? 1, target, trace: tr }
+}
+
+/** 路由结果里的动作名（和对话区的叫法一致） */
+export const ACTION_NAME: Partial<Record<Action, string>> = {
+  explain: '解释',
+  translate: '翻译',
+  summarize: '总结',
+  derive: '推导',
+  critique: '挑刺'
 }
 
 // ---------- 3b. 放行终端里的编程智能体（Qwen Code）之前先评风险 ----------
@@ -313,27 +364,28 @@ export async function riskGate(screen: string): Promise<{ risky: boolean; reason
   const irr = tr.answers.irreversible?.noul ?? 0
   const act = tr.answers.action?.choice ?? 'auto_approve'
   const risky = act !== 'auto_approve' || irr >= 0.6 || risk >= 1.5
-  const reason = `风险 ${risk.toFixed(1)}/2${irr >= 0.6 ? '，可能不可逆' : ''}`
+  const reason = `${risk < 0.5 ? '只读' : risk < 1.5 ? '会改本地文件' : '会删东西或动到远端'}${irr >= 0.6 ? '，可能撤不回来' : ''}`
+  summarize(tr, `${agent} 要执行的操作${reason}${risky ? '，要再按一次才放行' : '，直接放行'}`)
   return { risky, reason, trace: tr }
 }
 
 // ---------- 3c. 盯着 AI 回复里带数字 / 出处的句子：要不要核实 ----------
 
-type FactHandler = (s: { text: string; trace: JevTrace; risk: number }) => void
+type FactHandler = (s: { text: string; trace: JevTrace; risk: number; paneId: string; blockKey: string }) => void
 let onFact: FactHandler | null = null
 export function setFactHandler(fn: FactHandler): void {
   onFact = fn
 }
 const factChecked = new Set<string>()
 
-export async function factCheck(text: string): Promise<void> {
+export async function factCheck(text: string, d: { paneId: string; blockKey: string }): Promise<void> {
   const clean = text.trim()
   // 本地粗筛：有数字、百分比、年份或「研究 / 报告 / 据」这类出处词才值得问
   if (clean.length < 12 || !/\d|%|％|研究|报告|据|论文|Nature|Science|arXiv|统计|调查/.test(clean)) return
   const key = hashText(clean)
   if (factChecked.has(key)) return
   factChecked.add(key)
-  const tr = await run('block', '这句要不要核实', `用户正盯着 AI 回复里的这句话：\n${clean.slice(0, 600)}`, {
+  const tr = await run('fact', '这句要不要核实', `用户正盯着 AI 回复里的这句话：\n${clean.slice(0, 600)}`, {
     verifiable_claim: {
       type: 'noul',
       instructions: 'The sentence contains a specific factual claim with numbers or sources that should be fact-checked'
@@ -343,12 +395,14 @@ export async function factCheck(text: string): Promise<void> {
   if (tr.error) return
   const v = tr.answers.verifiable_claim?.noul ?? 0
   const r = tr.answers.hallucination_risk?.score ?? 0
-  if (v >= 0.7 && r >= 1) onFact?.({ text: clean, trace: tr, risk: r })
+  const flag = v >= 0.7 && r >= 1
+  summarize(tr, flag ? '回答里这句的数字或出处可能不准' : '回答里这句看着没问题')
+  if (flag) onFact?.({ text: clean, trace: tr, risk: r, paneId: d.paneId, blockKey: d.blockKey })
 }
 
 // ---------- 4. 盯着终端里的编程智能体（Qwen Code / Qwen Code）：它在等你拍板时提醒 ----------
 
-type TermAlert = (s: { state: string; trace: JevTrace; agent: string }) => void
+type TermAlert = (s: { state: string; trace: JevTrace; agent: string; docId?: string }) => void
 let onTermAlert: TermAlert | null = null
 export function setTerminalAlertHandler(fn: TermAlert): void {
   onTermAlert = fn
@@ -362,7 +416,7 @@ let termRetry: ReturnType<typeof setTimeout> | null = null
  * 终端输出停下来时调用，传「取当前整屏」的函数。两次判断至少隔 8 秒；节流期间不直接丢掉，到点再看一眼最新屏幕——
  * 否则确认框刚好在上次判断后 8 秒内弹出、之后屏幕不再动，就永远不会提醒（Qwen Code 实测踩到过）
  */
-export async function judgeTerminal(getScreen: () => string): Promise<void> {
+export async function judgeTerminal(getScreen: () => string, docId?: string): Promise<void> {
   if (!jevEnabled()) return
   let screen: string
   try {
@@ -381,7 +435,7 @@ export async function judgeTerminal(getScreen: () => string): Promise<void> {
     if (termRetry) clearTimeout(termRetry)
     termRetry = setTimeout(() => {
       termRetry = null
-      void judgeTerminal(getScreen)
+      void judgeTerminal(getScreen, docId)
     }, wait)
     return
   }
@@ -407,10 +461,24 @@ export async function judgeTerminal(getScreen: () => string): Promise<void> {
   const st = tr.answers.state?.choice
   // 认得出是 Qwen Code / Qwen Code 时本地规则认确认框很准：屏幕上没有确认框却判成「等你批准」，不提醒
   const noPrompt = st === 'waiting_permission' && !!known && !looksLikePermissionPrompt(screen)
-  if ((st === 'waiting_permission' || st === 'asking_user') && (tr.answers.state?.confidence ?? 0) >= 0.6 && !noPrompt) {
-    onTermAlert?.({ state: st, trace: tr, agent })
-  } else if ((tr.answers.stuck?.noul ?? 0) >= 0.7) {
-    onTermAlert?.({ state: 'stuck', trace: tr, agent })
+  const STATE_CN: Record<string, string> = {
+    working: '在干活',
+    waiting_permission: '在等你批准',
+    asking_user: '在问你',
+    error: '出错停了',
+    done: '做完了',
+    idle: '闲着'
+  }
+  const stuck = (tr.answers.stuck?.noul ?? 0) >= 0.7
+  const waiting = (st === 'waiting_permission' || st === 'asking_user') && (tr.answers.state?.confidence ?? 0) >= 0.6 && !noPrompt
+  summarize(tr, `${agent} ${waiting ? STATE_CN[st!] : stuck ? '好像卡住了' : STATE_CN[st ?? ''] ?? '状态不明'}`)
+  if (waiting) {
+    onTermAlert?.({ state: st!, trace: tr, agent, docId })
+  } else if (stuck) {
+    onTermAlert?.({ state: 'stuck', trace: tr, agent, docId })
+  } else if (docId && termAlertStore.get().docId === docId) {
+    // 它又动起来了（批准过了 / 答过了）：标签上的提醒收掉
+    clearTermAlert()
   }
 }
 

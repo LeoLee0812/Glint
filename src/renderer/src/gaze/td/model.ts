@@ -246,7 +246,7 @@ function heldOutError(pb: Problem, p: number[], idx: number[]): { sum: number; n
 
 export function fitTd(inp: TdFitInput): TdModel {
   const N = inp.rows.length
-  if (N < 30) throw new Error('有效样本太少')
+  if (N < 30) throw new Error('看到脸的时间太短，再校准一次')
   // 每个校准点总权重一样（点里的帧高度相关，按帧数算权重会偏向帧多的点）
   const count = new Map<number, number>()
   for (const g of inp.groups) count.set(g, (count.get(g) ?? 0) + 1)
@@ -265,10 +265,10 @@ export function fitTd(inp: TdFitInput): TdModel {
     tx.push(inp.tx[i])
     ty.push(inp.ty[i])
   }
-  if (px.length < 30) throw new Error('视线数据不对：大部分帧的视线没有落在屏幕平面上')
+  if (px.length < 30) throw new Error('视线大多没落在屏幕上，检查一下手机摆放再来')
   const ax = lsq3(px, py, tx)
   const ay = lsq3(px, py, ty)
-  if (!ax || !ay) throw new Error('校准数据退化了（眼睛几乎没动？）')
+  if (!ax || !ay) throw new Error('眼睛几乎没动，校准时要跟着圆点看')
   const A = [ax[0], ax[1], ay[0], ay[1]]
   const R = polar2(A)
   const pb: Problem = { rows: inp.rows, tx: inp.tx, ty: inp.ty, w, S: inp.S, R, z0: inp.z0 }

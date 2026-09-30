@@ -63,7 +63,6 @@ export const uiStore = createStore<{
   settingsTab: 'gaze' | 'providers' | null
   showHelp: boolean
   showCalibration: boolean
-  calibrationKind: 'full' | 'validate' | 'drift'
   /** 拍大头照 / 生成小人的弹窗 */
   showBooth: boolean
   /** 正在截主窗口：视线圈、焦点框、小人这些浮在上面的东西先藏起来 */
@@ -75,7 +74,6 @@ export const uiStore = createStore<{
   settingsTab: null,
   showHelp: false,
   showCalibration: false,
-  calibrationKind: 'full',
   showBooth: false,
   capturing: false
 })

@@ -247,7 +247,9 @@ function registerIpc(): void {
     camera: systemPreferences.getMediaAccessStatus('camera'),
     microphone: systemPreferences.getMediaAccessStatus('microphone')
   }))
-  ipcMain.handle('perm:openSettings', async (_e, pane: 'camera' | 'microphone' | 'speech') => {
+  ipcMain.handle('perm:openSettings', async (_e, pane: 'camera' | 'microphone' | 'speech' | 'bluetooth') => {
+    // 蓝牙：新手引导里连 Joy-Con（macOS 13 起蓝牙设置页的标识是 com.apple.BluetoothSettings）
+    if (pane === 'bluetooth') return shell.openExternal('x-apple.systempreferences:com.apple.BluetoothSettings')
     // 从没申请过的权限，系统设置列表里根本没有 Glint，得先弹系统授权框
     if ((pane === 'microphone' || pane === 'camera') && systemPreferences.getMediaAccessStatus(pane) === 'not-determined') {
       await systemPreferences.askForMediaAccess(pane).catch(() => false)

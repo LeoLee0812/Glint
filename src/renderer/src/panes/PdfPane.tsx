@@ -436,7 +436,7 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
     setScanPages(vis.size)
     if (kept.length && !toldRef.current) {
       toldRef.current = true
-      toast('这份 PDF 是扫描件，没有文字层：已按版面切成段落、图表、公式块，视线照样能选；按 A / X / Y 会把盯着的那一块截图交给看图模型', 'info', { ttl: 7000 })
+      toast('这是扫描版 PDF，已按版面分块，提问会带截图', 'info', { ttl: 7000 })
     }
     focus.refresh()
   }, [])
@@ -603,8 +603,8 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
           ＋
         </button>
         {scanPages > 0 && (
-          <span className="scan-tag" title="这份 PDF 的页面只是图片、没有文字层：按版面切成段落 / 图表 / 公式块给视线选，提问时截图交给看图模型">
-            扫描件 · 按版面分块
+          <span className="scan-tag" title="页面是图片，按版面分块">
+            扫描件
           </span>
         )}
         <span className="dim small ellipsis">{blocksRef.current.title || doc.title}</span>

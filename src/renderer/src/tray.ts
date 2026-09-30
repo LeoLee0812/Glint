@@ -19,7 +19,6 @@ function push(): void {
     source: g.source,
     face: g.face,
     calibrated: g.calibrated,
-    cvErrorPx: g.cvErrorPx != null ? Math.round(g.cvErrorPx) : null,
     joyL: j.L.connected || j.P.connected,
     joyR: j.R.connected || j.P.connected,
     joyRestL: j.L.connected ? j.L.resting : j.P.connected && j.P.resting,
@@ -41,22 +40,19 @@ async function run(c: TrayCommand): Promise<void> {
       const on = ['running', 'loading'].includes(gaze.status.get().state)
       if (on) gaze.stop()
       else await gaze.start(s?.gaze.cameraId || undefined)
-      toast(on ? '眼动追踪已暂停' : '眼动追踪已开启', 'info')
+      toast(on ? '眼动暂停了' : '眼动开了', 'info')
       return
     }
     case 'gaze:source': {
       if (!s || s.gaze.source === c.source) return
       await updateSettings((x) => ({ ...x, gaze: { ...x.gaze, source: c.source } }))
       await gaze.start(s.gaze.cameraId || undefined)
-      toast(c.source === 'truedepth' ? '眼动输入源换成 iPhone 原深感了' : '眼动输入源换回 Mac 摄像头了', 'ok')
-      if (!gaze.isCalibrated()) toast('这个输入源还没校准过：菜单栏图标 → 校准', 'info', { ttl: 6000 })
+      toast(c.source === 'truedepth' ? '换成 iPhone 原深感了' : '换回 Mac 摄像头了', 'ok')
+      if (!gaze.isCalibrated()) toast('这个输入源还没校准，从菜单栏图标里点「校准」', 'info', { ttl: 6000 })
       return
     }
     case 'calibrate':
-      return uiStore.patch({ showCalibration: true, calibrationKind: 'full' })
-    case 'validate':
-      if (gaze.isCalibrated()) uiStore.patch({ showCalibration: true, calibrationKind: 'validate' })
-      return
+      return uiStore.patch({ showCalibration: true })
     case 'open':
       return openViaDialog()
     case 'terminal':
@@ -66,7 +62,7 @@ async function run(c: TrayCommand): Promise<void> {
     case 'jev': {
       const next = !s?.jevMode
       await updateSettings((x) => ({ ...x, jevMode: next }))
-      toast(next ? 'Jev 模式已开启' : 'Jev 模式已关闭', 'jev')
+      toast(next ? 'Jev 开了' : 'Jev 关了', 'jev')
       return
     }
     case 'settings':

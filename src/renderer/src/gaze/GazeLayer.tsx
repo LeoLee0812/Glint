@@ -1,16 +1,20 @@
 import { useEffect, useRef } from 'react'
 import { useStore } from '../store'
 import { gaze } from './engine'
-import { focus, gazeUsable, mousePos, clientInSide, exitPoint } from '../focus/focus'
+import { focus, gazeUsable, mousePos, clientInSide, exitPoint, softStick } from '../focus/focus'
 import { keywordNear, refreshMagnet, sameMagnet, type Magnet } from '../focus/magnet'
 import { magnetNow, snapParams } from '../focus/snap'
 import { unionBox } from '../focus/types'
 import { boundsStore, clientToScreen, screenToClient, settingsStore, uiStore } from '../appState'
-import { input } from '../input/joycon'
 import { GazeBlob, type BlobTarget } from './blob'
+import { jevHintStore } from '../jev/jevBrain'
+import { KeyCap } from '../ui/JoyKeys'
 
 // 主窗口里的视线光环 + 焦点高亮
-// 光环吸附规则：硬焦点 → 整个包住选中的词/句；软焦点 → 盯住时被附近的关键词吸过去，扫视时不吸
+// 光环吸附规则跟着粒度（R 键切的 词 / 句 / 段 / 节）走：
+// - 硬焦点：整个包住选中的那一格
+// - 软焦点、粒度是词：盯住时被附近的关键词吸过去，扫视时不吸
+// - 软焦点、粒度是句 / 段 / 节：不吸词，眼睛落在哪一格就整个包住哪一格；眼睛走开了就松开、跟着眼睛
 // 藏起来时不飞回左上角：眼睛去了另一侧就朝那个方向滑走、边走边淡，别的情况原地淡出
 // 吸得多积极、多牢、多久才松开，都跟着「吸附强度」（设置 → 眼动）走；吸着的词记在 magnetNow，推右摇杆时从它起步
 
@@ -77,6 +81,15 @@ function createTargetSource(): () => BlobTarget {
     }
     shown = { x: p.x, y: p.y }
 
+    // 粒度不是词（或者是扫描页上的一行）：不吸词，包住软焦点那一格；眼睛出了这一格一截就松开
+    if (st.unit !== 'word' || (st.mode === 'soft' && st.sel?.visual)) {
+      cur = null
+      magnetNow.box = null
+      const u = st.mode === 'soft' && st.sel?.space === 'client' ? unionBox(st.sel.rects) : null
+      if (u && distTo(p, u) <= softStick(st.sel!.gran) + 12) return { x: p.x, y: p.y, visible: true, confidence, magnet: u, lock: true }
+      return { x: p.x, y: p.y, visible: true, confidence }
+    }
+
     const prm = snapParams()
     // 扫视中不吸，免得光环在词之间乱跳
     if (speed > prm.saccade) {
@@ -115,7 +128,7 @@ function createTargetSource(): () => BlobTarget {
 export function GazeLayer(): React.JSX.Element | null {
   const ui = useStore(uiStore)
   const f = useStore(focus.state)
-  useStore(input.status)
+  const hint = useStore(jevHintStore).hint
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // 光环自己跑 rAF 物理和绘制，不走 React 渲染；颜色跟着视线侧走：左边电光蓝、右边电光红（和两只 Joy-Con 一样）
@@ -156,9 +169,16 @@ export function GazeLayer(): React.JSX.Element | null {
   // 截图时整层先藏起来（截图上会另外画一个干净的蓝圈）
   const hidden = ui.showCalibration || ui.capturing
 
+  // Jev 的小签：只在眼睛还停在它说的那段（软焦点）时画，贴着整段（选的是词 / 句也一样）；上方放得下放上方，放不下放下方
+  const hb =
+    hint && f.mode === 'soft' && f.sel?.space === 'client' && f.paneId === hint.paneId && f.sel.blockKey === hint.blockKey
+      ? (focus.blockBox() ?? unionBox(f.sel.rects))
+      : null
+  const hintTop = hb ? (hb.y - 36 >= 56 ? hb.y - 36 : Math.min(hb.y + hb.height + 8, window.innerHeight - 40)) : 0
+
   return (
-    // 手柄都放在桌上（多半在用键盘鼠标）：光环淡下去，拿起手柄就恢复
-    <div className={`gaze-layer${input.allResting() ? ' joy-rest' : ''}`} style={{ display: hidden ? 'none' : undefined }}>
+    // 光环一直是满色：以前手柄「放下」就淡到 35%，可握在手里不动 3 秒也会被判成放下，读着读着光环就发白了
+    <div className="gaze-layer" style={{ display: hidden ? 'none' : undefined }}>
       {f.sel?.space === 'client' &&
         f.sel.rects.map((r, i) => (
           <div
@@ -170,6 +190,18 @@ export function GazeLayer(): React.JSX.Element | null {
       {f.mode === 'hard' && f.sel?.space === 'client' && f.sel.rects[0] && (
         <div className="hl-label" style={{ left: f.sel.rects[0].x - 3, top: Math.max(4, f.sel.rects[0].y - 30) }}>
           {f.label}
+        </div>
+      )}
+      {hb && hint && (
+        <div className={`jev-hint ${hint.kind}`} style={{ left: Math.max(8, hb.x - 3), top: hintTop }}>
+          {hint.kind === 'stuck' ? (
+            <>
+              <KeyCap k="A" lit size="sm" />
+              拆开讲
+            </>
+          ) : (
+            '这句的数字可能不准，核实一下'
+          )}
         </div>
       )}
       <canvas className="gaze-canvas" ref={canvasRef} />

@@ -89,7 +89,7 @@ export async function judge(state: string, questions: Record<string, JevQuestion
     return { ok: true, answers: hit.answers, model: hit.model, inputTokens: 0, cached: true, ms: Date.now() - t0 }
   }
   if (usage!.inputTokens >= cfg.dailyTokenCap) {
-    return { ok: false, answers: {}, inputTokens: 0, cached: false, ms: 0, error: `今天的 Jev 额度（${cfg.dailyTokenCap} token）已用完，明天自动恢复，或到设置里调高` }
+    return { ok: false, answers: {}, inputTokens: 0, cached: false, ms: 0, error: '今天的 Jev 额度用完了，明天恢复。急用可以去设置里调高' }
   }
 
   const body = JSON.stringify({ state: st, model: cfg.model, questions })
@@ -103,7 +103,7 @@ export async function judge(state: string, questions: Record<string, JevQuestion
       })
       const j: any = await res.json().catch(() => ({}))
       if (res.status === 429 || res.status === 529) {
-        lastErr = `HTTP ${res.status}（太快或官方过载）`
+        lastErr = `Jev 那边太忙（HTTP ${res.status}），等会儿再试`
         await new Promise((r) => setTimeout(r, 1500))
         continue
       }

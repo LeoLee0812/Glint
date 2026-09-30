@@ -8,15 +8,41 @@ import { magnetNow, snapParams } from './snap'
 import { haptic } from '../input/haptics'
 
 // 焦点控制器：把「眼睛大概在看哪」变成「具体指着哪段文字」
-// - 软焦点：跟着注视点走，默认按段高亮（摄像头眼动只能到段落级）
-// - 硬焦点：一推右摇杆就从软焦点落点起步，逐词 / 逐行精确移动，不再被视线带跑
-// - 再看向别处超过 0.8 秒，或按右摇杆按下，就回到跟随视线
+// - 粒度（词 / 句 / 段 / 节）只有一个，R 键或点顶栏的粒度药丸切（词 → 句 → 段 → 节 → 词），记在本机：
+//   视线、摇杆、十字键、B 放开全按它来，不会推一下摇杆又变回「词」
+// - 软焦点：跟着注视点走，选中视线处的那一格（「词」时光环吸住哪个词就是哪个词；句 / 段 / 节时光环整个包住那一格）
+// - 硬焦点：第一次推右摇杆把眼睛选中的那一格定住，再推一次挪一格（词：左右逐词、上下逐行；句 / 段 / 节：往后 / 往前一个），
+//   不再被视线带跑
+// - 再看向别处一会儿，或按右摇杆按下，就回到跟随视线
 // - 左右两侧分开：左手柄 − = 视线只跟左边内容，右手柄 + = 视线只跟右边的 AI 回答，
 //   看另一边时焦点原地不动，不会在两栏之间来回乱飘
-// - 吸附（强度在设置 → 眼动）：软焦点出了当前这段一点点还算这段；光环吸住一个词时，推 / 按右摇杆直接落在那个词上
+// - 吸附（强度在设置 → 眼动）：软焦点出了当前这一格一点点还算这一格；「词」时光环吸住一个词，推 / 按右摇杆直接落在那个词上
 
 /** 视线落在这一侧外面多远以内，还算这一侧（拉回边上）；再远就当在看另一边 */
 const SIDE_MARGIN = 70
+
+/** 用户选的粒度记在本机，下次打开还是它；默认「词」 */
+const UNIT_KEY = 'lookask.focusUnit'
+
+function loadUnit(): Granularity {
+  try {
+    const v = localStorage.getItem(UNIT_KEY) as Granularity | null
+    return v && GRAN_ORDER.includes(v) ? v : 'word'
+  } catch {
+    return 'word'
+  }
+}
+
+/** 软焦点出了当前这一格多远以内还算这一格：句挨得近（上下行就是别的句子），给得小；段、节按吸附强度给 */
+export function softStick(g: Granularity): number {
+  const m = snapParams().stick
+  return g === 'sentence' ? Math.round(m * 0.4) : m
+}
+
+/** 点到框的距离（在框里就是 0） */
+function distToBox(p: { x: number; y: number }, b: Box): number {
+  return Math.hypot(Math.max(b.x - p.x, 0, p.x - (b.x + b.width)), Math.max(b.y - p.y, 0, p.y - (b.y + b.height)))
+}
 
 /** 视图属于哪一侧：对话区和它下面裂变出的解释窗口在右边，其余（文档、终端）在左边 */
 export function sideOfPane(id: string | null | undefined): Side | null {
@@ -68,7 +94,10 @@ export function exitPoint(p: { x: number; y: number }, side: Side, bounds: Box):
 
 export interface FocusState {
   mode: 'none' | 'soft' | 'hard'
+  /** 当前选区实际的粒度（视图不支持用户选的那档时会退到最近的一档） */
   gran: Granularity
+  /** 用户选的粒度：视线、摇杆、十字键都按它 */
+  unit: Granularity
   paneId: string | null
   sel: Selection | null
   label: string
@@ -112,7 +141,10 @@ class PaneRegistry {
 export const panes = new PaneRegistry()
 
 class FocusController {
-  state = createStore<FocusState>({ mode: 'none', gran: 'paragraph', paneId: null, sel: null, label: '', at: 0 })
+  state = createStore<FocusState>((() => {
+    const unit = loadUnit()
+    return { mode: 'none', gran: unit, unit, paneId: null, sel: null, label: '', at: 0 }
+  })())
   events = new Emitter<{ dwell: BlockDwell; changed: FocusState }>()
 
   private anchor: Anchor | null = null
@@ -174,8 +206,9 @@ class FocusController {
     const now = performance.now()
     const st = this.state.get()
     if (st.mode === 'hard' && st.sel) {
+      // 按到选区的距离算（选的是一整段时，看着这段别处不算走开）
       const u = unionBox(st.sel.rects)
-      const far = !u || Math.hypot(p.x - (u.x + u.width / 2), p.y - (u.y + u.height / 2)) > 320
+      const far = !u || distToBox(p, u) > 280
       if (!far) {
         this.awayFix = null
         return
@@ -191,53 +224,105 @@ class FocusController {
       this.trackDwell(f)
       return
     }
-    const pane = panes.at(p.x, p.y)
+    let pane = panes.at(p.x, p.y)
     if (!pane) return
-    const a = pane.anchorAt(p.x, p.y)
+    let a = pane.anchorAt(p.x, p.y)
+    // 「词」粒度：光环正吸着一个词就用那个词——光环包着的就是焦点
+    const m = st.unit === 'word' ? this.magnetTarget() : null
+    if (m) {
+      pane = m.pane
+      a = m.anchor
+    }
     if (!a) return
     this.pane = pane
     this.anchor = a
-    this.update('soft', 'paragraph')
+    this.update('soft')
     this.trackDwell(f)
   }
 
-  /** 软焦点的迟滞：视线落在当前这段外面、但没超出吸附边距，就还算这段 */
+  /** 光环正吸着的词（刚更新过、吸得够牢）在哪个视图的哪个位置；只有「词」粒度才吸 */
+  private magnetTarget(): { pane: PaneAdapter; anchor: Anchor } | null {
+    const m = magnetNow
+    if (!m.box || performance.now() - m.at > 500 || m.strength < 0.35) return null
+    const x = m.box.x + m.box.width / 2
+    const y = m.box.y + m.box.height / 2
+    const pane = panes.at(x, y)
+    const anchor = pane?.anchorAt(x, y)
+    return pane && anchor ? { pane, anchor } : null
+  }
+
+  /** 软焦点的迟滞：视线落在当前这一格外面、但没超出吸附边距，就还算这一格（词不用：光环吸词自己有迟滞） */
   private holdsSoft(p: { x: number; y: number }): boolean {
     const st = this.state.get()
-    if (st.mode !== 'soft' || st.sel?.space !== 'client') return false
+    if (st.mode !== 'soft' || st.sel?.space !== 'client' || (st.sel.gran === 'word' && !st.sel.visual)) return false
     const u = unionBox(st.sel.rects)
     if (!u) return false
     // 在这段里面照常更新锚点（推摇杆时从视线处起步）
     if (p.x >= u.x && p.x <= u.x + u.width && p.y >= u.y && p.y <= u.y + u.height) return false
-    const m = snapParams().stick
+    const m = softStick(st.sel.gran)
     return p.x >= u.x - m && p.x <= u.x + u.width + m && p.y >= u.y - m && p.y <= u.y + u.height + m
   }
 
-  /** 光环正吸着一个词（刚更新过、吸得够牢）→ 硬焦点直接落在这个词上 */
+  /** 「词」粒度下光环正吸着一个词 → 硬焦点直接落在这个词上 */
   private snapToMagnet(): boolean {
-    const m = magnetNow
-    if (!m.box || performance.now() - m.at > 500 || m.strength < 0.35) return false
-    const x = m.box.x + m.box.width / 2
-    const y = m.box.y + m.box.height / 2
-    const pane = panes.at(x, y)
-    const a = pane?.anchorAt(x, y)
-    if (!pane || !a) return false
-    this.pane = pane
-    this.anchor = a
-    this.update('hard', 'word')
+    if (this.state.get().unit !== 'word') return false
+    const m = this.magnetTarget()
+    if (!m) return false
+    this.pane = m.pane
+    this.anchor = m.anchor
+    this.update('hard')
     return true
   }
 
-  /** 统计每个段落的停留时长和回看次数（给 Jev 判断读者是不是卡住了） */
+  /** 这个视图在这个锚点上用哪一档：用户选的粒度这里不支持（扫描页没有句）就退到最近的一档，优先往大了退 */
+  private unitFor(pane: PaneAdapter, a: Anchor): Granularity {
+    const u = this.state.get().unit
+    const ok = pane.grans?.(a) ?? GRAN_ORDER
+    if (ok.includes(u)) return u
+    const i = GRAN_ORDER.indexOf(u)
+    return ok.find((g) => GRAN_ORDER.indexOf(g) > i) ?? [...ok].reverse().find((g) => GRAN_ORDER.indexOf(g) < i) ?? ok[0]
+  }
+
+  /** 按粒度挪一格：词 = 左右逐词、上下逐行；段 = 上一段 / 下一段；句 / 节 = 一直走到换了一句 / 一节。右、下往后，左、上往前 */
+  private moveUnit(a: Anchor, dir: Dir, unit: Granularity): Anchor | null {
+    const pane = this.pane!
+    if (unit === 'word') return pane.move(a, dir)
+    const fwd = dir === 'right' || dir === 'down'
+    if (unit === 'paragraph' && pane.moveBlock) return pane.moveBlock(a, fwd ? 'down' : 'up')
+    return this.walkUntilChange(a, fwd, unit)
+  }
+
+  private walkUntilChange(a: Anchor, fwd: boolean, unit: Granularity): Anchor | null {
+    const pane = this.pane!
+    // 节按文字比（跳块时页面会滚，位置不可靠）；句再带上起始位置，两句一模一样的话也分得开
+    const key = (x: Selection | null) => (!x ? '' : unit === 'section' ? x.text : `${x.text}|${Math.round(x.rects[0]?.x ?? 0)},${Math.round(x.rects[0]?.y ?? 0)}`)
+    const cur = key(pane.select(a, unit))
+    // 终端里一行就是一句，按行走（会自己滚）；别的视图逐词走到换句；节一块一块跳
+    const next = (x: Anchor) =>
+      unit === 'section' && pane.moveBlock
+        ? pane.moveBlock(x, fwd ? 'down' : 'up')
+        : pane.move(x, pane.kind === 'terminal' ? (fwd ? 'down' : 'up') : fwd ? 'right' : 'left')
+    let x = a
+    for (let i = 0; i < 600; i++) {
+      const n = next(x)
+      if (!n) return null
+      x = n
+      if (key(pane.select(x, unit)) !== cur) return x
+    }
+    return null
+  }
+
+  /** 统计每个段落的停留时长和回看次数（给 Jev 判断读者是不是卡住了）；粒度是词 / 句时也按所在的整段算 */
   private trackDwell(f: Fixation): void {
     const sel = this.state.get().sel
     // 扫描页的块没有原文，Jev 没法判断难度
-    if (!sel?.blockKey || sel.visual || !this.pane) return
+    if (!sel?.blockKey || sel.visual || !this.pane || !this.anchor) return
+    const text = sel.gran === 'paragraph' ? sel.text : (this.pane.select(this.anchor, 'paragraph')?.text ?? sel.text)
     const key = `${this.pane.id}:${sel.blockKey}`
     const now = Date.now()
     let d = this.dwell.get(key)
     if (!d) {
-      d = { paneId: this.pane.id, blockKey: sel.blockKey, text: sel.text, dwellMs: 0, visits: 0, lastSeen: 0 }
+      d = { paneId: this.pane.id, blockKey: sel.blockKey, text, dwellMs: 0, visits: 0, lastSeen: 0 }
       this.dwell.set(key, d)
     }
     if (this.currentBlock !== key) {
@@ -246,7 +331,7 @@ class FocusController {
     }
     d.dwellMs += Math.min(f.duration, 600)
     d.lastSeen = now
-    d.text = sel.text
+    d.text = text
     this.events.emit('dwell', { ...d })
     if (this.dwell.size > 400) {
       const oldest = [...this.dwell.entries()].sort((a, b) => a[1].lastSeen - b[1].lastSeen)[0]
@@ -257,34 +342,37 @@ class FocusController {
   // ---------- 摇杆 / 按键驱动 ----------
 
   /**
-   * 从当前位置（没有就用视线）出发移动一步，进入硬焦点。
-   * 每一步右手柄震一下当刻度：同一句里「咔」，跨句「咔咔」，跨段「咚」，走到头「撞墙」；feel 调轻重（按住连发时越走越轻）
+   * 推右摇杆：还跟着视线时，先把眼睛选中的那一格定成硬焦点（「词」时是光环吸着的词），原地不动；
+   * 已经定住了就按粒度挪一格。
+   * 每一步右手柄震一下当刻度：逐词「咔」，跨句「咔咔」，跨段「咚」，走到头「撞墙」；feel 调轻重（按住连发时越走越轻）
    */
   step(dir: Dir, feel = 1): void {
     const st = this.state.get()
     if (st.mode !== 'hard') {
-      // 第一次推摇杆：光环正吸着一个词就落在那个词上；否则原地变成「词」焦点，不动
       if (this.snapToMagnet()) return haptic('detent', 'R', { scale: feel })
       if (!this.anchor) this.snapToGaze(false)
       if (!this.anchor || !this.pane) return
-      this.update('hard', 'word')
-      haptic('detent', 'R', { scale: feel })
-      return
+      this.update('hard')
+      return haptic('detent', 'R', { scale: feel })
     }
     if (!this.pane || !this.anchor) return
     const prev = this.anchor
-    const next = this.pane.move(prev, dir)
+    const unit = this.unitFor(this.pane, prev)
+    const next = this.moveUnit(prev, dir, unit)
     if (!next) return haptic('wall', 'R')
     this.anchor = next
-    this.update('hard', st.gran === 'paragraph' || st.gran === 'section' ? 'word' : st.gran)
-    this.scrollIntoView()
+    this.update('hard')
+    // 按段跳时视图自己会滚过去（文档是平滑滚到三成高的位置）；其余的这里补一下
+    if (unit !== 'paragraph' || !this.pane.moveBlock) this.scrollIntoView()
     haptic(this.crossing(prev, st.sel), 'R', { scale: feel })
   }
 
-  /** 这一步跨过了什么：跨段 = block，词粒度下跨句 = sentence，其余 = detent */
+  /** 这一步跨过了什么：跨段 = block；按句走 = sentence；按词走时跨了句 = sentence，其余 = detent；段 / 节 = block */
   private crossing(prev: Anchor, prevSel: Selection | null): 'block' | 'sentence' | 'detent' {
     const sel = this.state.get().sel
     if (prevSel?.blockKey && sel?.blockKey && prevSel.blockKey !== sel.blockKey) return 'block'
+    if (sel?.gran === 'sentence') return 'sentence'
+    if (sel?.gran === 'paragraph' || sel?.gran === 'section') return 'block'
     if (sel?.gran === 'word' && this.pane && this.anchor) {
       const a = this.pane.select(prev, 'sentence')
       const b = this.pane.select(this.anchor, 'sentence')
@@ -295,37 +383,50 @@ class FocusController {
     return 'detent'
   }
 
-  /** 十字键跳段（左手）：每跳一段左手柄「咚」一下，到头了「撞墙」 */
+  /** 十字键跳段（左手）：跳到上一段 / 下一段，选中那里的一个粒度（粒度是节时按节跳）；每跳一下左手柄「咚」，到头了「撞墙」 */
   stepBlock(dir: 'up' | 'down'): void {
     if (!this.anchor || !this.pane?.moveBlock) {
       this.snapToGaze(false)
       if (!this.anchor || !this.pane?.moveBlock) return
     }
-    const next = this.pane.moveBlock!(this.anchor!, dir)
+    const bySection = this.unitFor(this.pane, this.anchor!) === 'section'
+    const next = bySection ? this.walkUntilChange(this.anchor!, dir === 'down', 'section') : this.pane.moveBlock!(this.anchor!, dir)
     if (!next) return haptic('wall', 'L')
     this.anchor = next
-    this.update('hard', 'paragraph')
+    this.update('hard')
+    if (bySection) this.scrollIntoView()
     haptic('block', 'L')
   }
 
+  /** 切粒度（R 键 / 点顶栏的粒度药丸）：词 → 句 → 段 → 节 → 词；当前视图不支持的档跳过（扫描页没有句） */
   cycleGran(): void {
     const st = this.state.get()
     if (!this.anchor) this.snapToGaze(false)
-    if (!this.anchor) return
-    // 视图不支持的粒度跳过（扫描页没有词和句，只有 行 → 段 → 栏）
-    const ok = this.pane?.grans?.(this.anchor) ?? GRAN_ORDER
-    let i = GRAN_ORDER.indexOf(st.gran)
-    let g = st.gran
+    const ok = this.pane && this.anchor ? (this.pane.grans?.(this.anchor) ?? GRAN_ORDER) : GRAN_ORDER
+    let i = GRAN_ORDER.indexOf(st.unit)
+    let u = st.unit
     for (let k = 0; k < GRAN_ORDER.length; k++) {
       i = (i + 1) % GRAN_ORDER.length
-      g = GRAN_ORDER[i]
-      if (ok.includes(g)) break
+      u = GRAN_ORDER[i]
+      if (ok.includes(u)) break
     }
-    this.update('hard', g)
+    this.setUnit(u)
+  }
+
+  /** 定粒度并记住；有焦点的话当场按新粒度重选（软的还是软的，硬的还是硬的） */
+  setUnit(u: Granularity): void {
+    try {
+      localStorage.setItem(UNIT_KEY, u)
+    } catch {
+      /* 存不下就只管这一次 */
+    }
+    const st = this.state.get()
+    this.state.set({ ...st, unit: u, gran: st.mode === 'none' ? u : st.gran })
+    if (st.mode !== 'none' && this.pane && this.anchor) this.update(st.mode)
   }
 
   snapToGaze(keepHard = true): void {
-    // 按右摇杆「跳回视线处」：光环吸着词时就落在那个词上
+    // 按右摇杆「跳回视线处」：「词」粒度下光环吸着词时就落在那个词上
     if (keepHard && this.snapToMagnet()) return
     const p = this.pointNow()
     if (!p) return
@@ -334,7 +435,7 @@ class FocusController {
     if (!pane || !a) return
     this.pane = pane
     this.anchor = a
-    this.update(keepHard ? 'hard' : 'soft', keepHard ? 'word' : 'paragraph')
+    this.update(keepHard ? 'hard' : 'soft')
   }
 
   /** 没有眼动时（没校准 / 键盘演示），从某个窗口坐标点起步；明确点到另一边时视线模式跟着切过去 */
@@ -348,7 +449,7 @@ class FocusController {
     if (!pane || !a) return
     this.pane = pane
     this.anchor = a
-    this.update(mode, mode === 'hard' ? 'word' : 'paragraph')
+    this.update(mode)
   }
 
   /** 切换视线跟哪一边；这一侧的焦点记下来，切回来时还原 */
@@ -364,23 +465,25 @@ class FocusController {
     if (m && panes.get(m.pane.id) === m.pane && m.pane.select(m.anchor, m.gran)) {
       this.pane = m.pane
       this.anchor = m.anchor
-      this.update(m.mode, m.gran)
+      this.update(m.mode)
     } else {
       this.clear()
       this.snapToGaze(false)
     }
   }
 
+  /** B：硬焦点松开成软焦点（粒度不变，接着跟视线）；已经是软的就清掉 */
   release(): void {
     const st = this.state.get()
-    if (st.mode === 'hard') this.update('soft', 'paragraph')
+    if (st.mode === 'hard') this.update('soft')
     else this.clear()
   }
 
   clear(): void {
     this.anchor = null
     this.pane = null
-    this.state.set({ mode: 'none', gran: 'paragraph', paneId: null, sel: null, label: '', at: performance.now() })
+    const unit = this.state.get().unit
+    this.state.set({ mode: 'none', gran: unit, unit, paneId: null, sel: null, label: '', at: performance.now() })
   }
 
   activePane(): PaneAdapter | null {
@@ -389,13 +492,22 @@ class FocusController {
     return p ? panes.at(p.x, p.y) : null
   }
 
-  private update(mode: 'soft' | 'hard', gran: Granularity): void {
+  /** 焦点所在的那一整段的框（窗口坐标）：选的是词 / 句时，Jev 的小签照样贴着整段放 */
+  blockBox(): Box | null {
+    if (!this.pane || !this.anchor) return null
+    const sel = this.pane.select(this.anchor, 'paragraph')
+    return sel?.space === 'client' ? unionBox(sel.rects) : null
+  }
+
+  /** 按用户选的粒度（这个视图不支持就退一档）选中锚点处，gran 传了就用传的 */
+  private update(mode: 'soft' | 'hard', gran?: Granularity): void {
     if (!this.pane || !this.anchor) return
-    const sel = this.pane.select(this.anchor, gran)
+    const g = gran ?? this.unitFor(this.pane, this.anchor)
+    const sel = this.pane.select(this.anchor, g)
     // 文字视图里选到空白（终端空行、段落间隙）就不算焦点
     if (sel && !sel.text.trim() && sel.space === 'client') return
     const label = sel ? `${sel.unit ?? GRAN_LABEL[sel.gran]} · ${sel.text.replace(/\s+/g, ' ').slice(0, 24)}` : ''
-    const next: FocusState = { mode, gran: sel?.gran ?? gran, paneId: this.pane.id, sel, label, at: performance.now() }
+    const next: FocusState = { mode, gran: sel?.gran ?? g, unit: this.state.get().unit, paneId: this.pane.id, sel, label, at: performance.now() }
     this.state.set(next)
     this.events.emit('changed', next)
   }
@@ -428,19 +540,23 @@ class FocusController {
     const u = unionBox(sel.rects)
     if (!u) return
     const r = el.getBoundingClientRect()
-    if (u.y < r.top + 30) this.pane!.scrollBy(u.y - r.top - 60)
+    // 比可视区还高的（一整节）：把开头摆到上面；放得下的：整块露出来就行
+    const tall = u.height > r.height - 120
+    if (u.y < r.top + 30 || (tall && u.y > r.top + 60)) this.pane!.scrollBy(u.y - r.top - 60)
     else if (u.y + u.height > r.bottom - 30) this.pane!.scrollBy(u.y + u.height - r.bottom + 60)
   }
 
   // ---------- 取上下文 ----------
 
-  async context(opts: { withImage?: boolean } = {}): Promise<FocusContext | null> {
+  /** 当前焦点的提问上下文；gran 传了就按它取（Jev 说「卡住了」按 A 时要整段，不管现在选的是词还是句） */
+  async context(opts: { withImage?: boolean; gran?: Granularity } = {}): Promise<FocusContext | null> {
     if (!this.pane || !this.anchor) this.snapToGaze(false)
     if (!this.pane || !this.anchor) return null
     const st = this.state.get()
-    const ctx = await this.pane.context(this.anchor, st.gran)
-    if (opts.withImage && !ctx.image && st.sel && this.pane.capture) {
-      const u = unionBox(st.sel.rects)
+    const ctx = await this.pane.context(this.anchor, opts.gran ?? st.gran)
+    const sel = opts.gran && opts.gran !== st.gran ? this.pane.select(this.anchor, opts.gran) : st.sel
+    if (opts.withImage && !ctx.image && sel && this.pane.capture) {
+      const u = unionBox(sel.rects)
       if (u) {
         const pad = 14
         const img = await this.pane.capture({ x: u.x - pad, y: u.y - pad, width: u.width + pad * 2, height: u.height + pad * 2 })
@@ -496,8 +612,8 @@ export function switchSide(side: Side): void {
   if (sideToast) dismissToast(sideToast)
   sideToast =
     side === 'right'
-      ? toast('视线跟右边的 AI 回答：看到不懂的按 A，解释往下裂变出一个窗口（− 回左边）', 'info', { ttl: 4200 })
-      : toast('视线跟左边内容：看右边回答时焦点不会跑过去（+ 切到回答）', 'info', { ttl: 3600 })
+      ? toast('视线跟右边了，没看懂的地方按 A。按 − 回左边', 'info', { ttl: 4200 })
+      : toast('视线跟左边了，按 + 去右边', 'info', { ttl: 3600 })
   rumble('soft', side === 'right' ? 'R' : 'L')
 }
 

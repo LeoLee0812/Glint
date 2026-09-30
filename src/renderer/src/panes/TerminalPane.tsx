@@ -108,7 +108,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
           term.write(p.data)
           // 输出停下来 1.5 秒后，让 Jev 看一眼 Qwen Code 是不是在等你拍板
           if (settleTimer) clearTimeout(settleTimer)
-          settleTimer = setTimeout(() => judgeTerminal(() => screenOf(term)), 1500)
+          settleTimer = setTimeout(() => judgeTerminal(() => screenOf(term), doc.id), 1500)
         })
       )
       offs.push(
@@ -163,7 +163,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
   const startAgent = () => {
     run(`${AGENT.cmd}\r`)
     if (!settingsStore.get().s?.providers.find((p) => p.id === 'qwen')?.apiKey) {
-      toast('设置里还没填百炼 Key，Qwen Code 会先让你选登录方式；填好后新开一个终端就自动带上', 'warn', {
+      toast('还没填百炼 Key，Qwen Code 会先让你登录。填好后新开个终端就行', 'warn', {
         ttl: 8000,
         action: { label: '去填 Key', run: () => uiStore.patch({ showSettings: true }) }
       })
@@ -174,7 +174,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
       if (installing || !t || !/command not found: qwen|qwen: command not found/.test(screenOf(t).split('\n').slice(-4).join('\n'))) return
       installing = true
       run(`${AGENT.install}\r`)
-      toast('还没装 Qwen Code，正在用 npm 装（半分钟左右），装好自动启动', 'info', { ttl: 8000 })
+      toast('还没装 Qwen Code，正在装，装好会自己启动', 'info', { ttl: 8000 })
     }
     // shell 刚起来时 .zshrc 可能还没跑完，看两次
     setTimeout(check, 1500)
@@ -190,8 +190,7 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
         <button className="btn sm" onClick={() => run('clear\r')}>
           清屏
         </button>
-        <span className="dim small">十字键 ↑↓ 选选项 · → 回车 · ← Esc · 按住 ZL 说话直接打字</span>
-        {exited && <span className="warn small">shell 已退出，关掉这个标签重开</span>}
+        {exited && <span className="warn small">终端已退出，关掉这个标签重开一个</span>}
       </div>
       <div className="term-host" ref={hostRef} />
     </div>

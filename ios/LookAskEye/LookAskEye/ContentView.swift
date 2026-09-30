@@ -36,7 +36,7 @@ struct ContentView: View {
                     Card {
                         Text("这台设备不支持原深感人脸追踪")
                             .font(.title3.bold())
-                        Text("需要有面容 ID 的 iPhone（iPhone X 及以后）。模拟器也不支持，只能看看界面。")
+                        Text("要有面容 ID 的 iPhone 才行。")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -48,7 +48,7 @@ struct ContentView: View {
                 Button {
                     m.dark = true
                 } label: {
-                    Label("黑屏省电（继续发送）", systemImage: "moon.fill")
+                    Label("黑屏省电", systemImage: "moon.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -73,7 +73,7 @@ struct ContentView: View {
                 Text("Glint Eye")
                     .font(.system(size: 30, weight: .bold))
                     .kerning(-0.5)
-                Text("Glint 瞳问 · 给 Mac 一只眼睛")
+                Text("配合 Mac 上的 Glint 用")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -98,10 +98,10 @@ struct ContentView: View {
             return ("正在连「\(name)」…", .secondary)
         case let .needPair(mac):
             return ("在「\(mac)」上输入配对码 \(m.code)", .orange)
-        case let .paired(mac, fps, use):
-            return use ? ("已连上「\(mac)」· Mac 收到 \(fps) 帧/秒", .glint) : ("已配对，但「\(mac)」没选 iPhone 原深感（Mac 上：设置 → 眼动 → 输入源）", .orange)
+        case let .paired(mac, _, use):
+            return use ? ("已连上「\(mac)」", .glint) : ("已配对。在「\(mac)」的设置 → 眼动里把输入源换成 iPhone", .orange)
         case let .silent(mac):
-            return ("「\(mac)」没回话：Mac 上的 Glint 开着吗？", .red)
+            return ("「\(mac)」没反应，Mac 上的 Glint 开着吗？", .red)
         }
     }
 
@@ -121,11 +121,10 @@ struct ContentView: View {
                     .foregroundStyle(m.tracked ? Color.glint : .orange)
                 if let d = m.distanceCm { Text("离手机 \(d) 厘米").foregroundStyle(d < 30 || d > 85 ? .orange : .secondary) }
                 Spacer()
-                Text("发送 \(m.sendFps) 帧/秒").foregroundStyle(.secondary)
             }
             .font(.subheadline)
             if FrameRatePolicy.fps(for: m.thermal) < 60 {
-                Label("手机偏热，已降到 \(FrameRatePolicy.fps(for: m.thermal)) 帧/秒；可以先黑屏省电", systemImage: "thermometer.high")
+                Label("手机有点热，可以先黑屏省电", systemImage: "thermometer.high")
                     .font(.footnote)
                     .foregroundStyle(.orange)
             }
@@ -150,7 +149,7 @@ struct ContentView: View {
                 .monospacedDigit()
                 .kerning(14)
                 .frame(maxWidth: .infinity)
-            Text("第一次连这台 Mac 时，在 Mac 上的 Glint：设置 → 眼动 → 输入这 4 位数字。之后自动认得。")
+            Text("第一次连时在 Mac 上输一次，之后不用再输。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -160,7 +159,7 @@ struct ContentView: View {
 
     private var previewCard: some View {
         Card {
-            Toggle("显示摄像头预览（关掉更省电）", isOn: $m.preview)
+            Toggle("摄像头预览", isOn: $m.preview)
                 .font(.subheadline)
             if m.preview {
                 ARPreview(session: m.tracker.session)
@@ -179,7 +178,7 @@ struct ContentView: View {
         Card {
             Text("附近的 Mac").font(.headline)
             if m.macs.isEmpty {
-                Text("还没找到：Mac 上的 Glint 要选「iPhone 原深感」输入源；手机和 Mac 连同一个 Wi‑Fi，或者 Mac 连这台手机的个人热点。")
+                Text("还没找到。Mac 上的 Glint 要把输入源换成 iPhone，两边连同一个 Wi‑Fi 或热点。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -200,7 +199,7 @@ struct ContentView: View {
             }
             DisclosureGroup("手动输入 Mac 地址", isExpanded: $manual) {
                 HStack {
-                    TextField("IP，比如 172.20.10.2", text: $host)
+                    TextField("IP 地址", text: $host)
                         .keyboardType(.numbersAndPunctuation)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -225,10 +224,8 @@ struct ContentView: View {
         Card {
             Text("怎么放").font(.headline)
             VStack(alignment: .leading, spacing: 6) {
-                Text("• 手机竖放：测试时立在 MacBook 屏幕和键盘之间的缝里；以后用背板挂在屏幕后面、镜头露出屏幕上沿。")
-                Text("• 前置镜头对着脸，离脸 40～70 厘米，越近越准。放好后别再碰它，碰了要在 Mac 上重新校准。")
-                Text("• 这个 App 要一直开在前台，屏幕会常亮；嫌亮就点下面的「黑屏省电」。")
-                Text("• 没有 Wi‑Fi：Mac 连这台手机的个人热点，其它不变。")
+                Text("• 竖着放，前置镜头对着脸，离 40～70 厘米。放好别再碰，碰了要重新校准。")
+                Text("• 用的时候别切走这个 App，嫌屏幕亮就点「黑屏省电」。")
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
@@ -244,7 +241,7 @@ struct DarkScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 8) {
-                Text(m.tracked ? "Glint Eye · 发送中 \(m.sendFps) 帧/秒" : "Glint Eye · 看不到脸")
+                Text(m.tracked ? "正在发送" : "看不到脸")
                 Text("点一下回来")
             }
             .font(.footnote)

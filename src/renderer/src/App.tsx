@@ -12,6 +12,7 @@ import { JoyHelp } from './ui/JoyHelp'
 import { Toasts } from './ui/Toasts'
 import { HeadGuide } from './ui/HeadGuide'
 import { PhotoBooth } from './ui/PhotoBooth'
+import { Guide } from './ui/Guide'
 import { loadAvatar } from './avatar/avatar'
 import { startOnboarding } from './onboarding'
 
@@ -22,7 +23,7 @@ export default function App(): React.JSX.Element {
   const dragging = useRef(false)
 
   useEffect(() => {
-    // 小人和设置都读完再决定要不要走首次引导（已经有小人的老用户不弹拍照）
+    // 小人和设置都读完再决定要不要走新手引导（已经校准过、生成过小人的老用户不弹）
     Promise.all([loadAvatar().catch(() => undefined), loadSettingsIntoStore()]).then(([, st]) => {
       setRatio(st.leftRatio || 0.62)
       gaze.setSmoothing(st.gaze.smoothing)
@@ -76,6 +77,7 @@ export default function App(): React.JSX.Element {
       <PhotoBooth />
       <SettingsDialog />
       <JoyHelp />
+      <Guide />
       <Toasts />
       {!s && <div className="boot">启动中…</div>}
     </div>

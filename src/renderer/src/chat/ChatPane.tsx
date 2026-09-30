@@ -7,8 +7,6 @@ import { DomAdapter, ElementBlocks } from '../focus/domAdapter'
 import { GRAN_LABEL, unionBox } from '../focus/types'
 import { settingsStore, updateSettings, la, toast, uiStore } from '../appState'
 import { openDoc } from '../panes/docs'
-import { JevPanel } from '../jev/JevPanel'
-import { JevBadges } from '../jev/JevBadges'
 import { Icon } from '../ui/Icon'
 
 // 右侧对话区：焦点卡片 + 快捷动作 + 流式回答；回答本身也能被眼睛「看中」再追问
@@ -35,9 +33,9 @@ function ModelPicker(): React.JSX.Element | null {
         const [providerId, model] = e.target.value.split('::')
         updateSettings((x) => ({ ...x, chatModel: { providerId, model } }))
       }}
-      title="回答用的模型（设置里还能分别指定快速模型和看图模型）"
+      title="回答用的模型"
     >
-      {!opts.some((o) => o.v === cur) && <option value={cur}>{s.chatModel.model}（未配置 Key）</option>}
+      {!opts.some((o) => o.v === cur) && <option value={cur}>{s.chatModel.model}（没填 Key）</option>}
       {opts.map((o) => (
         <option key={o.v} value={o.v}>
           {o.label}
@@ -53,7 +51,7 @@ function FocusChip(): React.JSX.Element {
   if (f.mode === 'none' || !f.sel) {
     return (
       <div className="focus-chip empty">
-        {side === 'right' ? '右侧模式：看着回答里不懂的地方按 A，解释会往下裂变出一个窗口（− 回左边）' : '没有焦点：看向左边的内容，或推一下右摇杆（⌥ + 方向键）'}
+        {side === 'right' ? '看着回答里没懂的地方，按 A' : '还没选中内容'}
       </div>
     )
   }
@@ -82,12 +80,12 @@ function UserMsg({ m }: { m: ChatMsg }): React.JSX.Element {
             {m.ctx.location ? ` · ${m.ctx.location}` : ''} · {m.ctx.scan?.unit ?? GRAN_LABEL[m.ctx.gran]}
           </div>
           <div className={`cq-body ${open ? 'open' : ''}`}>
-            {m.ctx.selection || m.ctx.paragraph || '扫描件没有文字层，发给看图模型的是下面这张截图'}
+            {m.ctx.selection || m.ctx.paragraph || '扫描件，发的是下面这张截图'}
           </div>
         </div>
       )}
       {m.image && <img className="ctx-img" src={m.image} alt="焦点截图" />}
-      {m.jev && <JevBadges traces={m.jev} />}
+      {m.jevNote && <div className="jev-note">Jev · {m.jevNote}</div>}
     </div>
   )
 }
@@ -102,10 +100,7 @@ function BotMsg({ m, onRetry }: { m: ChatMsg; onRetry: () => void }): React.JSX.
       {m.status === 'error' && <div className="err">出错了：{m.error}</div>}
       {m.status !== 'streaming' && (
         <div className="msg-foot">
-          <span className="dim">
-            {m.model}
-            {m.ms ? ` · ${(m.ms / 1000).toFixed(1)}s` : ''}
-          </span>
+          <span className="dim">{m.model}</span>
           <button className="link" onClick={() => navigator.clipboard.writeText(m.text).then(() => toast('已复制', 'ok'))}>
             复制
           </button>
@@ -128,7 +123,6 @@ function NoteMsg({ m }: { m: ChatMsg }): React.JSX.Element {
   return (
     <div className="msg note" data-mid={m.id}>
       <div className="note-body">{m.text}</div>
-      {m.jev && <JevBadges traces={m.jev} />}
       <button className="link" onClick={() => removeMsg(m.id)}>
         忽略
       </button>
@@ -152,10 +146,7 @@ function ForkCardView({ c, depth }: { c: ForkCard; depth: number }): React.JSX.E
       {a.status === 'error' && <div className="err">出错了：{a.error}</div>}
       {a.status === 'done' && (
         <div className="msg-foot focus-skip">
-          <span className="dim">
-            {a.model}
-            {a.ms ? ` · ${(a.ms / 1000).toFixed(1)}s` : ''}
-          </span>
+          <span className="dim">{a.model}</span>
         </div>
       )}
     </div>
@@ -213,14 +204,14 @@ function ForkPanel({ cards }: { cards: ForkCard[] }): React.JSX.Element {
           <Icon name="split" />
         </span>
         <b>解释窗口</b>
-        <span className="dim small">往下裂变 · 第 {cards.length} 层</span>
+        <span className="dim small">第 {cards.length} 层</span>
         <span className="grow" />
         {cards.length > 1 && (
-          <button className="btn sm ghost" onClick={() => popFork()} title="收起最下面一层（右侧模式按 B）">
+          <button className="btn sm ghost" onClick={() => popFork()} title="按 B 也行">
             上一层
           </button>
         )}
-        <button className="btn sm ghost" onClick={closeFork} title="关掉解释窗口">
+        <button className="btn sm ghost" onClick={closeFork}>
           关闭
         </button>
       </div>
@@ -310,7 +301,7 @@ export function ChatPane(): React.JSX.Element {
     <section className="right">
       <header className="chat-head">
         <ModelPicker />
-        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="Jev 模式：先判断再开口（长按右手柄 +）">
+        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="长按右手柄 + 也能开关">
           <input
             type="checkbox"
             checked={jevOn}
@@ -332,16 +323,14 @@ export function ChatPane(): React.JSX.Element {
             const p = await la.file.saveText('Glint 对话.md', exportChat())
             if (p) toast('已导出 ' + p, 'ok')
           }}
-          title="导出成 Markdown"
+          title="导出成 Markdown 文件"
         >
           导出
         </button>
-        <button className="btn sm ghost" onClick={clearChat} title="清空对话">
+        <button className="btn sm ghost" onClick={clearChat}>
           清空
         </button>
       </header>
-
-      {jevOn && <JevPanel />}
 
       <div
         className="msgs"
@@ -355,21 +344,16 @@ export function ChatPane(): React.JSX.Element {
           <div className="chat-empty no-focus">
             <p>
               <Icon name="eye" />
-              <span>看向左边的一段，按 <b>A</b> 解释</span>
+              <span>看着哪里不懂，按 <b>A</b> 解释</span>
             </p>
             <p>
               <Icon name="gamepad" />
-              <span>推右摇杆精确到词，按 <b>X</b> 翻译、<b>Y</b> 总结</span>
+              <span>按 <b>R</b> 换成整句、整段，按 <b>X</b> 翻译</span>
             </p>
             <p>
               <Icon name="mic" />
               <span>按住 <b>ZR</b> 说出你的问题</span>
             </p>
-            <p>
-              <Icon name="split" />
-              <span>按 <b>+</b> 视线改跟这边的回答，不懂的按 <b>A</b> 往下裂变解释，<b>−</b> 回左边</span>
-            </p>
-            <p className="dim">键盘：⌥↩ 解释 · ⌥T 翻译 · ⌥S 总结 · 按住 ⌥空格 说话</p>
           </div>
         )}
         {chat.msgs.map((m, i) =>
@@ -382,16 +366,16 @@ export function ChatPane(): React.JSX.Element {
       <div className="composer">
         <FocusChip />
         <div className="quick">
-          <button className="btn sm" onClick={() => ask('explain')} title="A">
+          <button className="btn sm" onClick={() => ask('explain')}>
             解释 <kbd>A</kbd>
           </button>
-          <button className="btn sm" onClick={() => ask('translate')} title="X">
+          <button className="btn sm" onClick={() => ask('translate')}>
             翻译 <kbd>X</kbd>
           </button>
-          <button className="btn sm" onClick={() => ask('summarize')} title="Y">
+          <button className="btn sm" onClick={() => ask('summarize')}>
             总结 <kbd>Y</kbd>
           </button>
-          <button className="btn sm" onClick={() => ask('capture')} title="截图键：整块截下来，蓝圈标出你在看哪，交给看图模型重点解释">
+          <button className="btn sm" onClick={() => ask('capture')} title="左手柄截图键">
             看图问 <Icon name="camera" />
           </button>
           {chat.busy && (
@@ -408,7 +392,6 @@ export function ChatPane(): React.JSX.Element {
         ) : (
           <textarea
             value={draft}
-            placeholder="问点什么（自动带上你正在看的内容）· Enter 发送 · Shift+Enter 换行"
             rows={2}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {

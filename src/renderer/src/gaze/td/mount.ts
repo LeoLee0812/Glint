@@ -12,9 +12,9 @@ const MARGIN_X = 15
 const MARGIN_Y = 10
 
 export const MOUNT_LABEL: Record<TdMount, string> = {
-  bottom: '竖放在屏幕和键盘之间的缝里（会挡住屏幕中下部）',
-  top: '挂在屏幕后面，镜头露出屏幕上沿',
-  free: '其它位置（不挡屏幕）'
+  bottom: '竖放在屏幕和键盘之间',
+  top: '挂在屏幕后面，镜头露出上沿',
+  free: '其他位置'
 }
 
 /**
@@ -40,10 +40,4 @@ export function occludedRegion(mount: TdMount, d: DisplayInfo | null): { x0: num
 
 export function isOccluded(r: ReturnType<typeof occludedRegion>, u: number, v: number): boolean {
   return !!r && u >= r.x0 && u <= r.x1 && v >= r.y0 && v <= r.y1
-}
-
-/** 手机挡住中间那一列时，屏幕中心换成手机上方还看得见的点（漂移校正、精度测试用） */
-export function visibleCenter(r: ReturnType<typeof occludedRegion>): [number, number] {
-  if (!r || !isOccluded(r, 0.5, 0.5)) return [0.5, 0.5]
-  return [0.5, Math.max(0.06, r.y0 / 2)]
 }

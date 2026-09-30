@@ -4,11 +4,10 @@ import { gaze } from '../gaze/engine'
 import { uiStore, settingsStore, toast, rumble } from '../appState'
 import { input } from '../input/joycon'
 import { avatarStore, takeHeadshot, generateAvatar } from '../avatar/avatar'
-import { finishOnboarding } from '../onboarding'
 import { Icon } from './Icon'
 
 // 拍大头照 → 生成实时小人：摄像头预览（镜像）+ 倒数 3 秒拍照 + 确认后交给图生图
-// 装好后第一次打开时这就是引导的第一步；快门是左摇杆按下（整个 App 只有这里用它），拍下那一刻手柄重震一下
+// 新手引导最后一步可以顺手拍；快门是左摇杆按下（整个 App 只有这里用它），拍下那一刻手柄重震一下
 // 画的时候可以先关掉窗口，画好了角落里的小人会自己换上
 
 const PREVIEW_W = 480
@@ -44,13 +43,9 @@ function BoothInner(): React.JSX.Element {
     return () => clearInterval(id)
   }, [borrowed])
   const camReady = borrowed ? camUp : st.state === 'running'
-  const camNote = borrowed ? '摄像头启动中…（拍照临时借用 Mac 摄像头）' : st.state === 'loading' ? '摄像头启动中…' : st.error || '摄像头没开'
+  const camNote = borrowed ? '正在打开 Mac 摄像头…' : st.state === 'loading' ? '摄像头启动中…' : st.error || '摄像头没开'
 
-  const close = () => {
-    uiStore.patch({ showBooth: false })
-    finishOnboarding()
-  }
-  const firstRun = s?.onboarded === false
+  const close = () => uiStore.patch({ showBooth: false })
   const provider = s?.providers.find((p) => p.id === s.avatar.providerId)
   const noKey = !provider?.apiKey
   const fillKey = () => uiStore.patch({ showSettings: true, settingsTab: 'providers' })
@@ -105,7 +100,7 @@ function BoothInner(): React.JSX.Element {
   const shoot = () => {
     if (step !== 'live' || av.busy) return
     if (performance.now() - gaze.lastFaceBoxAt > 1000) {
-      toast('没看到脸：正对摄像头，光线从前面来', 'warn')
+      toast('没看到脸，正对着摄像头，光从前面来', 'warn')
       return
     }
     setStep('count')
@@ -147,7 +142,7 @@ function BoothInner(): React.JSX.Element {
     setStep('live')
   }
 
-  // 手柄 / 键盘：左摇杆按下（⌥A）= 快门，A 确认，B 退一步；设置叠在上面填 Key 时不抢按键
+  // 手柄：左摇杆按下 = 快门，A 确认，B 退一步（键盘用 ⌥↩ / Esc）；设置叠在上面填 Key 时不抢按键
   useEffect(() => {
     return input.onButton((e) => {
       if (e.down && e.btn === 'LS' && !uiStore.get().showSettings) shoot()
@@ -175,12 +170,9 @@ function BoothInner(): React.JSX.Element {
       <div className="modal booth" onClick={(e) => e.stopPropagation()}>
         <h2>
           <Icon name="person" />
-          {firstRun ? '第一步：拍张大头照，生成你的实时小人' : '拍张大头照，生成你的实时小人'}
+          拍张大头照，生成你的小人
         </h2>
-        <p className="dim small">
-          小人会一直待在屏幕角落，跟着你的头实时动；坐偏了、离远了它会告诉你往哪挪。照片只发给图生图服务
-          （{provider?.name || s?.avatar.providerId} · {s?.avatar.model}），不存本地。
-        </p>
+        <p className="dim small">照片只发给阿里云百炼，不存本地。</p>
 
         <div className="booth-stage">
           {step !== 'shot' ? (
@@ -200,8 +192,8 @@ function BoothInner(): React.JSX.Element {
                 <Icon name="sparkles" />
               </div>
               <figure className={`booth-avatar ${av.busy ? 'busy' : ''}`}>
-                {made && av.img ? <img src={av.img} alt="小人" /> : <div className="booth-wait">{av.busy ? `${genSec}s` : '？'}</div>}
-                <figcaption>{made ? '你的小人' : av.busy ? '正在画…（一般半分钟）' : '小人'}</figcaption>
+                {made && av.img ? <img src={av.img} alt="小人" /> : <div className="booth-wait">{av.busy ? `${genSec} 秒` : '？'}</div>}
+                <figcaption>{made ? '你的小人' : av.busy ? '正在画…' : '小人'}</figcaption>
               </figure>
             </div>
           )}
@@ -209,7 +201,7 @@ function BoothInner(): React.JSX.Element {
         </div>
 
         {av.error && step === 'shot' && !av.busy && !made && !noKey && <p className="err small">没画出来：{av.error}</p>}
-        {step === 'shot' && !av.busy && !made && noKey && <p className="err small">还没填千问的 API Key，填好才能画小人（照片先留着）</p>}
+        {step === 'shot' && !av.busy && !made && noKey && <p className="err small">还没填千问的 Key，填好才能画。照片先留着</p>}
 
         <div className="booth-actions">
           {made ? (
@@ -245,7 +237,7 @@ function BoothInner(): React.JSX.Element {
           ) : (
             <>
               <button className="btn primary" onClick={shoot} disabled={step !== 'live' || !camReady || av.busy}>
-                {av.busy ? '上一个小人还在画…' : '拍照（按左摇杆）· 倒数 3 秒'}
+                {av.busy ? '上一个小人还在画…' : '拍照（按左摇杆）'}
               </button>
               <button className="btn" onClick={close}>
                 取消（B）

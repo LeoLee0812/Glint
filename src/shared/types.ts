@@ -260,7 +260,6 @@ export interface TrayStatus {
   source: GazeSourceKind
   face: boolean
   calibrated: boolean
-  cvErrorPx: number | null
   joyL: boolean
   joyR: boolean
   /** 手柄放在桌上（震动先停了，拿起来就恢复） */
@@ -275,7 +274,6 @@ export type TrayCommand =
   | { cmd: 'gaze:toggle' }
   | { cmd: 'gaze:source'; source: GazeSourceKind }
   | { cmd: 'calibrate' }
-  | { cmd: 'validate' }
   | { cmd: 'open' }
   | { cmd: 'terminal' }
   | { cmd: 'side'; side: 'left' | 'right' }
