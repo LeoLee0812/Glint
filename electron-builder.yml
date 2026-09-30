@@ -1,4 +1,5 @@
-# Glint 瞳问打包配置：只出 Apple 芯片的 dmg；没有开发者证书，打完包做 ad-hoc 签名
+# Glint 瞳问打包配置：Mac 出 Apple 芯片的 dmg（没有开发者证书，打完包做 ad-hoc 签名）；
+# Windows 出 x64 的 NSIS 安装包（没有代码签名证书，第一次运行 SmartScreen 会拦一下）
 appId: com.leo.lookask
 productName: Glint
 copyright: Copyright © 2026 Leo
@@ -12,9 +13,7 @@ files:
 asarUnpack:
   - '**/node_modules/node-pty/**'
 extraResources:
-  - from: native/bin/lookask-bridge
-    to: bin/lookask-bridge
-  # 菜单栏小图标（template 图，scripts/make-tray-icon.py 生成）
+  # 菜单栏 / 托盘小图标（Mac 是 template 图，Windows 是 ico，scripts/make-tray-icon.py 生成）
   - from: resources/tray
     to: tray
 npmRebuild: false
@@ -32,6 +31,10 @@ mac:
   hardenedRuntime: false
   gatekeeperAssess: false
   minimumSystemVersion: '13.0'
+  extraResources:
+    # Swift 原生助手（native/build.sh 编出来的）
+    - from: native/bin/lookask-bridge
+      to: bin/lookask-bridge
   extendInfo:
     NSCameraUsageDescription: Glint 用摄像头做眼动追踪：画面只在本机实时处理，不录制、不上传。
     NSMicrophoneUsageDescription: 按住 Joy-Con 扳机说话时，需要用麦克风把你的问题转成文字。
@@ -39,6 +42,43 @@ mac:
     NSLocalNetworkUsageDescription: 接收 iPhone 上 Glint Eye 发来的原深感眼动数据（只在本地网络里传，不出局域网）。
     NSBonjourServices:
       - _lookask._udp
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: resources/icon.ico
+  # Windows 的 Chromium 语言包按 zh-CN / en-US 命名
+  electronLanguages:
+    - zh-CN
+    - en-US
+  extraResources:
+    # TypeScript 原生助手（scripts/build-native.mjs 打的包）+ 它旁边的 node-hid 预编译二进制
+    - from: native/bin
+      to: bin
+      filter:
+        - lookask-bridge.cjs
+        - prebuilds/HID-win32-x64/**
+  files:
+    # node-pty 自带各平台的预编译版和几十兆调试符号，Windows 包里只留 x64 的二进制
+    - '!**/node_modules/node-pty/prebuilds/darwin-*/**'
+    - '!**/node_modules/node-pty/prebuilds/win32-arm64/**'
+    - '!**/node_modules/node-pty/third_party/conpty/*/win10-arm64/**'
+    - '!**/node_modules/node-pty/**/*.pdb'
+  # 没做自动更新，不要 app-update.yml
+  publish: null
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Glint 瞳问
+  artifactName: Glint-Setup-${version}-x64.${ext}
+  installerLanguages:
+    - zh_CN
+  language: '2052'
+  # 卸载时不删 %APPDATA%\LookAsk：设置、校准、小人都留着，重装还在
+  deleteAppDataOnUninstall: false
 afterPack: scripts/after-pack.cjs
 dmg:
   title: Glint ${version}
