@@ -103,7 +103,7 @@ npm run build:native   # 打包 TypeScript 版手柄助手
 npm run dist:win       # 打 NSIS 安装包
 ```
 
-iPhone 端 Glint Eye 用 `bash ios/LookAskEye/build.sh device` 装到手机。开发细节见 `开发说明`。
+iPhone 端 Glint Eye 用 `bash ios/LookAskEye/build.sh device` 装到手机。
 
 ## 架构
 

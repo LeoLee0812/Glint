@@ -25,7 +25,7 @@ export function defaultShell(): string {
 }
 
 /**
- * shell 的启动参数：Mac 上 -l 当登录 shell（会读 ~/.zprofile，qwen / agent 命令才找得到）；
+ * shell 的启动参数：Mac 上 -l 当登录 shell（会读 ~/.zprofile，qwen 等命令才找得到）；
  * Windows 的 PowerShell 用 -ExecutionPolicy Bypass：Windows PowerShell 5.1 默认禁止跑脚本，
  * npm 全局装的 qwen 是个 qwen.ps1，不放开就报「禁止运行脚本」
  */

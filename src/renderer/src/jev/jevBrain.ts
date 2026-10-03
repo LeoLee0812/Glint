@@ -400,7 +400,7 @@ export async function factCheck(text: string, d: { paneId: string; blockKey: str
   if (flag) onFact?.({ text: clean, trace: tr, risk: r, paneId: d.paneId, blockKey: d.blockKey })
 }
 
-// ---------- 4. 盯着终端里的编程智能体（Qwen Code / Qwen Code）：它在等你拍板时提醒 ----------
+// ---------- 4. 盯着终端里的编程智能体（Qwen Code）：它在等你拍板时提醒 ----------
 
 type TermAlert = (s: { state: string; trace: JevTrace; agent: string; docId?: string }) => void
 let onTermAlert: TermAlert | null = null
@@ -459,7 +459,7 @@ export async function judgeTerminal(getScreen: () => string, docId?: string): Pr
     stuck: { type: 'noul', instructions: 'The agent is stuck repeating the same failing approach' }
   })
   const st = tr.answers.state?.choice
-  // 认得出是 Qwen Code / Qwen Code 时本地规则认确认框很准：屏幕上没有确认框却判成「等你批准」，不提醒
+  // 认得出是 Qwen Code 时本地规则认确认框很准：屏幕上没有确认框却判成「等你批准」，不提醒
   const noPrompt = st === 'waiting_permission' && !!known && !looksLikePermissionPrompt(screen)
   const STATE_CN: Record<string, string> = {
     working: '在干活',

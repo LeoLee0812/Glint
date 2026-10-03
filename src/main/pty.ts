@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { defaultShell, isWin, shellArgs } from './platform'
 
-// 左侧终端：node-pty 起一个登录 shell（会读 ~/.zprofile ~/.zshrc，所以 qwen / agent 命令都能找到）；
+// 左侧终端：node-pty 起一个登录 shell（会读 ~/.zprofile ~/.zshrc，所以 qwen 等命令都能找到）；
 // Windows 上是 PowerShell（node-pty 走 ConPTY）。
 // Qwen Code 要的百炼 Key 和默认设置由 qwenCode.ts 准备好，经 opts.env 带进来
 

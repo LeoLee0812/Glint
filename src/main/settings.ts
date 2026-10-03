@@ -8,8 +8,6 @@ import { defaultShell, isMac } from './platform'
 // 设置存在 ~/Library/Application Support/LookAsk/settings.json（Windows 是 %APPDATA%\LookAsk\settings.json；权限 600，只有本人可读）
 // Key 只存本机，不进仓库
 
-/** 终端里的编程智能体从 Qwen Code 换成了 Qwen Code，老设置里存的默认提示词这一句跟着换（migrate） */
-const OLD_AGENT_LINE = '- 如果焦点内容来自终端里的 Qwen Code，把它当作编程协作场景来解释'
 const AGENT_LINE = '- 如果焦点内容来自终端里的 Qwen Code（或别的编程智能体），把它当作编程协作场景来解释'
 
 const DEFAULT_SYSTEM_PROMPT = `你是 Glint 瞳问的阅读副驾。用户用眼动追踪 + Joy-Con 手柄指向了屏幕上的内容，「当前焦点」就是用户此刻正在看的东西。
@@ -119,11 +117,6 @@ function migrate(s: Settings, def: Settings): boolean {
   } else if ('quality' in av) {
     // 画质档是 gpt-image 的参数，百炼用不到
     delete av.quality
-    changed = true
-  }
-  // 提示词里只换这一句，用户自己改过的其余部分不动
-  if (s.systemPrompt.includes(OLD_AGENT_LINE)) {
-    s.systemPrompt = s.systemPrompt.replace(OLD_AGENT_LINE, AGENT_LINE)
     changed = true
   }
   return changed

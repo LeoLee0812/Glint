@@ -1,6 +1,6 @@
 # LookAskEye（iPhone 端）
 
-iPhone 原深感眼动的数据发送端：ARKit 人脸追踪拿头的三维位姿、双眼朝向、lookAtPoint、眼部表情系数和重力方向，每帧签名后用 UDP 发给 Mac 上的 LookAsk。Mac 端的收包、配对、几何换算见仓库根目录的 `README.md` 和 `开发说明`。
+iPhone 原深感眼动的数据发送端：ARKit 人脸追踪拿头的三维位姿、双眼朝向、lookAtPoint、眼部表情系数和重力方向，每帧签名后用 UDP 发给 Mac 上的 LookAsk。Mac 端的收包、配对、几何换算见仓库根目录的 `README.md`。
 
 ## 文件
 
