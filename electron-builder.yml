@@ -59,11 +59,18 @@ win:
         - lookask-bridge.cjs
         - prebuilds/HID-win32-x64/**
   files:
+    # 平台段写了 files 就不再沿用顶层那份白名单（只写排除项会退回「整个仓库全打进去」，在 Mac 上交叉打包时把 ios/.build 也塞进了 asar），
+    # 所以这里把顶层的三条再写一遍
+    - out/**
+    - package.json
+    - '!**/*.map'
     # node-pty 自带各平台的预编译版和几十兆调试符号，Windows 包里只留 x64 的二进制
     - '!**/node_modules/node-pty/prebuilds/darwin-*/**'
     - '!**/node_modules/node-pty/prebuilds/win32-arm64/**'
     - '!**/node_modules/node-pty/third_party/conpty/*/win10-arm64/**'
     - '!**/node_modules/node-pty/**/*.pdb'
+    # Mac 上交叉打包时 node-pty 的 build/ 里是给 Mac 编的 pty.node，Windows 用不到（它走 prebuilds/win32-x64）
+    - '!**/node_modules/node-pty/build/**'
   # 没做自动更新，不要 app-update.yml
   publish: null
 nsis:

@@ -1,7 +1,7 @@
 {
   "name": "glint",
   "productName": "Glint",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Glint 瞳问：眼动追踪 + Joy-Con 的 AI 阅读副驾，所见即所问",
   "main": "out/main/index.js",
   "author": "Leo",
