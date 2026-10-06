@@ -25,6 +25,7 @@ import {
 } from '../jev/jevBrain'
 import { docsStore } from '../panes/docs'
 import { guideModal } from '../onboarding'
+import { jevMissing } from '../../../shared/jev'
 
 // 按键路由：左手 Joy-Con 管左边（滚动、翻页、终端按键、对终端里的 Qwen Code 说话），
 // 右手 Joy-Con 管右边（微调焦点、解释/翻译/总结、按住问 AI）
@@ -61,9 +62,10 @@ function implicitCalibrate(): void {
 function toggleJev(): void {
   const s = settingsStore.get().s
   if (!s) return
-  if (!s.jev.apiKey) {
-    toast('还没填 Jev 的 Key', 'warn')
-    uiStore.patch({ showSettings: true })
+  const missing = jevMissing(s)
+  if (missing) {
+    toast(missing, 'warn')
+    uiStore.patch({ showSettings: true, settingsTab: 'jev' })
     return
   }
   const on = !s.jevMode

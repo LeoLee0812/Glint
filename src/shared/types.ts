@@ -22,11 +22,14 @@ export interface ModelRef {
 }
 
 export interface JevConfig {
-  /** 网关地址：TypeSafe 直连 / 博查 / OpenCode Zen / Vercel 等，协议都是 systemone */
+  /** 网关地址：默认阿里云百炼决策模型（地址里的 {WorkspaceId} 换成业务空间 ID），也可以换 TypeSafe 直连 / 博查 / OpenRouter 等，协议都是 systemone */
   baseUrl: string
+  /** 留空 = 百炼地址时借用千问服务商的 Key */
   apiKey: string
   model: string
-  /** 每天最多用多少输入 token，超了自动停，Key 不能充值要省着用 */
+  /** 百炼业务空间 ID（ws-xxx），只有百炼地址要；千问服务商用的是业务空间专属域名时可以不填 */
+  workspaceId: string
+  /** 每天最多用多少输入 token，超了自动停 */
   dailyTokenCap: number
 }
 

@@ -5,6 +5,7 @@ import type { FocusContext } from '../focus/types'
 import type { BlockDwell } from '../focus/focus'
 import type { Action } from '../chat/prompts'
 import { looksLikeAgent, looksLikePermissionPrompt, terminalAgent, withoutModeLine } from '../panes/agent'
+import { jevMissing } from '../../../shared/jev'
 
 export { looksLikePermissionPrompt }
 
@@ -74,7 +75,7 @@ export const jevStore = createStore<{ traces: JevTrace[]; usage: JevUsage | null
 
 export function jevEnabled(): boolean {
   const s = settingsStore.get().s
-  return !!s?.jevMode && !!s.jev.apiKey
+  return !!s?.jevMode && !jevMissing(s)
 }
 
 async function run(kind: JevTrace['kind'], title: string, state: string, questions: Record<string, JevQuestion>): Promise<JevTrace> {
@@ -214,7 +215,8 @@ export async function onDwell(d: BlockDwell, opts: { aiReply?: boolean } = {}): 
   if (d.dwellMs >= 1500 && !analyses.has(key)) await analyzeBlock(d.text)
   const a = analyses.get(key)
   if (!a || suggested.has(key)) return
-  const stuckish = (d.dwellMs >= 9000 || d.visits >= 3) && a.difficulty >= 1.4
+  // 百炼决策模型打难度偏保守（满篇公式的段落也就 1.4 左右），门槛放在 1.2
+  const stuckish = (d.dwellMs >= 9000 || d.visits >= 3) && a.difficulty >= 1.2
   if (!stuckish) return
   // 同一段 20 秒内最多问一次
   const last = stuckAsked.get(key) || 0
@@ -390,12 +392,17 @@ export async function factCheck(text: string, d: { paneId: string; blockKey: str
       type: 'noul',
       instructions: 'The sentence contains a specific factual claim with numbers or sources that should be fact-checked'
     },
-    hallucination_risk: { type: 'score', instructions: 'Likelihood that this claim is fabricated or inaccurate', criteria: ['Low', 'Medium', 'High'] }
+    // 档位写成中文并说清每档长什么样：百炼决策模型只给 Low / Medium / High 三个词时，「2024 年 Nature 研究称缺陷率降 57%」这种也只打 0.2
+    hallucination_risk: {
+      type: 'score',
+      instructions: '这句话里的数字或出处是编造或不准确的可能性',
+      criteria: ['低：常识或广为人知、可轻易查证', '中：具体但有可能记错', '高：精确数字配权威出处却难以查证，像是编的']
+    }
   })
   if (tr.error) return
   const v = tr.answers.verifiable_claim?.noul ?? 0
   const r = tr.answers.hallucination_risk?.score ?? 0
-  const flag = v >= 0.7 && r >= 1
+  const flag = v >= 0.7 && r >= 0.5
   summarize(tr, flag ? '回答里这句的数字或出处可能不准' : '回答里这句看着没问题')
   if (flag) onFact?.({ text: clean, trace: tr, risk: r, paneId: d.paneId, blockKey: d.blockKey })
 }

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings, Provider } from '../shared/types'
 import { defaultShell, isMac } from './platform'
+import { BAILIAN_JEV_MODEL, BAILIAN_JEV_URL } from '../shared/jev'
 
 // 设置存在 ~/Library/Application Support/LookAsk/settings.json（Windows 是 %APPDATA%\LookAsk\settings.json；权限 600，只有本人可读）
 // Key 只存本机，不进仓库
@@ -71,6 +72,32 @@ function backupRemoved(list: Provider[]): void {
   chmodSync(p, 0o600)
 }
 
+/** 换掉的 Jev 配置（含 Key）追加进 userData/removed-jev.json（权限 600） */
+function backupJev(j: Settings['jev']): void {
+  const p = join(dataDir(), 'removed-jev.json')
+  let old: Array<Settings['jev']> = []
+  try {
+    old = JSON.parse(readFileSync(p, 'utf8'))
+  } catch {
+    /* 第一次备份 */
+  }
+  writeFileSync(p, JSON.stringify([...old, j], null, 2), 'utf8')
+  chmodSync(p, 0o600)
+}
+
+/**
+ * 2026-10 起 Jev 默认换成百炼决策模型：没有 workspaceId 字段的老设置（在那之前存的）只要还停在 TypeSafe 直连，
+ * 就整组换成百炼，原来的 Jev Key 备份到 removed-jev.json；之后用户自己再选回 TypeSafe 不会被改掉
+ */
+function migrateJev(raw: Partial<Settings['jev']> | undefined, def: Settings['jev']): Settings['jev'] {
+  const j = { ...def, ...(raw || {}) }
+  if (raw && !('workspaceId' in raw) && /api\.typesafe\.ai/.test(j.baseUrl)) {
+    if (j.apiKey) backupJev(j)
+    return { ...def }
+  }
+  return j
+}
+
 /** 老设置迁移：删不用的服务商、补上千问、补官网链接；返回有没有改动 */
 function migrate(s: Settings, def: Settings): boolean {
   let changed = false
@@ -123,6 +150,7 @@ function migrate(s: Settings, def: Settings): boolean {
 }
 
 export const JEV_PRESETS = [
+  { name: '阿里云百炼 · 决策模型（默认，Key 和千问共用）', baseUrl: BAILIAN_JEV_URL, model: BAILIAN_JEV_MODEL },
   { name: 'TypeSafe 官方直连', baseUrl: 'https://api.typesafe.ai', model: 'jev-latest' },
   { name: '博查 Jev（限时免费）', baseUrl: 'https://jev.bocha.cn', model: 'bocha-jev-v1' },
   { name: 'OpenCode Zen', baseUrl: 'https://opencode.ai/zen', model: 'jev-1.13' },
@@ -137,7 +165,7 @@ export function defaultSettings(): Settings {
     fastModel: { providerId: 'qwen', model: 'qwen3.8-flash' },
     visionModel: { providerId: 'qwen', model: 'qwen3.8-max' },
     avatar: { providerId: 'qwen', model: AVATAR_MODEL, show: true },
-    jev: { baseUrl: 'https://api.typesafe.ai', apiKey: '', model: 'jev-latest', dailyTokenCap: 60000 },
+    jev: { baseUrl: BAILIAN_JEV_URL, apiKey: '', model: BAILIAN_JEV_MODEL, workspaceId: '', dailyTokenCap: 300000 },
     jevMode: false,
     gaze: { source: 'webcam', tdMount: 'bottom', cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7, headComp: true },
     terminal: { cwd: homedir(), shell: defaultShell() },
@@ -171,13 +199,15 @@ export function loadSettings(): Settings {
       s = {
         ...def,
         ...raw,
-        jev: { ...def.jev, ...(raw.jev || {}) },
+        jev: migrateJev(raw.jev, def.jev),
         avatar: { ...def.avatar, ...(raw.avatar || {}) },
         gaze: { ...def.gaze, ...(raw.gaze || {}) },
         terminal: { ...def.terminal, ...(raw.terminal || {}) },
         providers: raw.providers?.length ? raw.providers : def.providers
       }
-      if (migrate(s, def)) saveSettings(s)
+      // 老设置没有 jev.workspaceId，补上后存一次，免得每次启动都重新迁移
+      const jevOld = !!raw.jev && !('workspaceId' in raw.jev)
+      if (migrate(s, def) || jevOld) saveSettings(s)
     } catch (e) {
       console.error('[settings] 读取失败，用默认值', e)
     }

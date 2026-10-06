@@ -8,6 +8,7 @@ import { GRAN_LABEL, unionBox } from '../focus/types'
 import { settingsStore, updateSettings, la, toast, uiStore } from '../appState'
 import { openDoc } from '../panes/docs'
 import { Icon } from '../ui/Icon'
+import { jevMissing } from '../../../shared/jev'
 
 // 右侧对话区：焦点卡片 + 快捷动作 + 流式回答；回答本身也能被眼睛「看中」再追问
 // 右侧模式（右手柄 +）下追问回答里的某一处，解释不塞进主对话，而是在下面裂变出一个解释窗口，可以一层层往下问
@@ -301,14 +302,15 @@ export function ChatPane(): React.JSX.Element {
     <section className="right">
       <header className="chat-head">
         <ModelPicker />
-        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="长按右手柄 + 也能开关">
+        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="百炼决策模型判断你卡没卡住、怎么答；长按右手柄 + 也能开关">
           <input
             type="checkbox"
             checked={jevOn}
             onChange={(e) => {
-              if (e.target.checked && !s?.jev.apiKey) {
-                toast('先在设置里填 Jev Key', 'warn')
-                uiStore.patch({ showSettings: true })
+              const missing = s ? jevMissing(s) : ''
+              if (e.target.checked && missing) {
+                toast(`先在设置里补上：${missing.replace(/^还没填/, '')}`, 'warn')
+                uiStore.patch({ showSettings: true, settingsTab: 'jev' })
                 return
               }
               updateSettings((x) => ({ ...x, jevMode: e.target.checked }))

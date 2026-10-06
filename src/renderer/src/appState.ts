@@ -60,7 +60,7 @@ export const uiStore = createStore<{
   side: Side
   showSettings: boolean
   /** 打开设置时直接跳到哪一页（比如发现 iPhone 待配对时跳到「眼动」，拍大头照发现没填 Key 时跳到「模型服务」） */
-  settingsTab: 'gaze' | 'providers' | null
+  settingsTab: 'gaze' | 'providers' | 'jev' | null
   showHelp: boolean
   showCalibration: boolean
   /** 拍大头照 / 生成小人的弹窗 */

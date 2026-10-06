@@ -4,9 +4,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { JevQuestion, JevResult, JevUsage } from '../shared/types'
 import { loadSettings } from './settings'
+import { jevEndpoint, jevKey, jevMissing } from '../shared/jev'
 
-// Jev 判断引擎客户端：只判断不写字（choice / score / noul），便宜但 Key 不能充值
-// 所以这里做三件事：命中缓存不重复花钱、按天记账、超过每日上限直接拒绝
+// Jev 判断引擎客户端：只判断不写字（choice / score / noul），默认走阿里云百炼的决策模型 decision-model-preview
+// 这里做三件事：命中缓存不重复请求、按天记账、超过每日上限直接拒绝
 
 const CACHE_MAX = 800
 
@@ -63,21 +64,15 @@ export function jevUsage(): JevUsage {
   return { ...usage! }
 }
 
-/** 网关地址三种写法都认：只写主机、带 /v1、或者直接写到动作路径 */
-function endpoint(baseUrl: string): string {
-  const b = baseUrl.replace(/\/+$/, '')
-  if (/\/(systemone|evaluate|decisions)$/.test(b)) return b
-  if (/\/v1$/.test(b)) return `${b}/systemone`
-  return `${b}/v1/systemone`
-}
-
 export async function judge(state: string, questions: Record<string, JevQuestion>): Promise<JevResult> {
   loadState()
   const t0 = Date.now()
-  const cfg = loadSettings().jev
-  if (!cfg.apiKey) return { ok: false, answers: {}, inputTokens: 0, cached: false, ms: 0, error: '还没填 Jev Key' }
+  const s = loadSettings()
+  const cfg = s.jev
+  const missing = jevMissing(s)
+  if (missing) return { ok: false, answers: {}, inputTokens: 0, cached: false, ms: 0, error: missing }
 
-  // state 上限 32k token，这里按字符粗截断，留足余量
+  // state 上限 32k token（百炼是 64k），这里按字符粗截断，留足余量
   const st = state.length > 12000 ? state.slice(0, 12000) : state
   const key = createHash('sha1').update(cfg.model).update('\u0000').update(st).update('\u0000').update(JSON.stringify(questions)).digest('hex')
   const hit = cache!.get(key)
@@ -96,14 +91,14 @@ export async function judge(state: string, questions: Record<string, JevQuestion
   let lastErr = ''
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await net.fetch(endpoint(cfg.baseUrl), {
+      const res = await net.fetch(jevEndpoint(s), {
         method: 'POST',
-        headers: { authorization: `Bearer ${cfg.apiKey}`, 'content-type': 'application/json' },
+        headers: { authorization: `Bearer ${jevKey(s)}`, 'content-type': 'application/json' },
         body
       })
       const j: any = await res.json().catch(() => ({}))
       if (res.status === 429 || res.status === 529) {
-        lastErr = `Jev 那边太忙（HTTP ${res.status}），等会儿再试`
+        lastErr = `判断服务太忙（HTTP ${res.status}），等会儿再试`
         await new Promise((r) => setTimeout(r, 1500))
         continue
       }
