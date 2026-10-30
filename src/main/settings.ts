@@ -167,7 +167,7 @@ export function defaultSettings(): Settings {
     avatar: { providerId: 'qwen', model: AVATAR_MODEL, show: true },
     jev: { baseUrl: BAILIAN_JEV_URL, apiKey: '', model: BAILIAN_JEV_MODEL, workspaceId: '', dailyTokenCap: 300000 },
     jevMode: false,
-    gaze: { source: 'webcam', tdMount: 'bottom', cameraId: '', calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7, headComp: true },
+    gaze: { source: 'webcam', tdMount: 'bottom', cameraId: '', glintRotate: 90, calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7, headComp: true },
     terminal: { cwd: homedir(), shell: defaultShell() },
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     leftRatio: 0.62,
@@ -212,8 +212,8 @@ export function loadSettings(): Settings {
       console.error('[settings] 读取失败，用默认值', e)
     }
   }
-  // iPhone 原深感只有 Mac 版有（手机把数据发给 Mac 上的原生助手）；从 Mac 拷过来的设置在别的平台上一律当摄像头
-  if (!isMac && s.gaze.source !== 'webcam') s.gaze = { ...s.gaze, source: 'webcam' }
+  // iPhone 原深感只有 Mac 版有（手机把数据发给 Mac 上的原生助手）；从 Mac 拷过来的设置在别的平台上一律当摄像头（Glint Eye 是 USB 摄像头，两边都能用）
+  if (!isMac && s.gaze.source === 'truedepth') s.gaze = { ...s.gaze, source: 'webcam' }
   cache = s
   return s
 }

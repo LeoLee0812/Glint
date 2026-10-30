@@ -33,8 +33,11 @@ export interface JevConfig {
   dailyTokenCap: number
 }
 
-/** 眼动输入源：Mac 摄像头（平面画面）或 iPhone 原深感（三维头姿 + 双眼朝向） */
-export type GazeSourceKind = 'webcam' | 'truedepth'
+/** 眼动输入源：Mac 摄像头（平面画面）、Glint Eye 外置红外摄像头（平面画面，自动认设备）或 iPhone 原深感（三维头姿 + 双眼朝向） */
+export type GazeSourceKind = 'webcam' | 'glinteye' | 'truedepth'
+
+/** Glint Eye 画面顺时针转多少度（模组可能横着装） */
+export type CamRotate = 0 | 90 | 180 | 270
 
 /**
  * iPhone 放在哪：bottom = 竖放在屏幕和键盘之间的缝里（会挡住屏幕中下部，校准点避开）；
@@ -48,6 +51,8 @@ export interface GazeConfig {
   /** iPhone 原深感的摆放位置 */
   tdMount: TdMount
   cameraId: string
+  /** Glint Eye 画面顺时针旋转角度 */
+  glintRotate?: CamRotate
   calibrationPoints: 9 | 17
   showCursor: boolean
   autoScroll: boolean

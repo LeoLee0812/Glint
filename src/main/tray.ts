@@ -24,7 +24,7 @@ function icon(on: boolean) {
 }
 
 function gazeLine(s: TrayStatus): string {
-  const src = s.source === 'truedepth' ? 'iPhone 原深感' : '摄像头'
+  const src = s.source === 'truedepth' ? 'iPhone 原深感' : s.source === 'glinteye' ? 'Glint Eye' : '摄像头'
   if (s.gaze === 'running') return `眼动：${src} · ${s.face ? '追踪中' : '看不到脸'}`
   if (s.gaze === 'loading') return `眼动：${src} · 启动中…`
   if (s.gaze === 'error') return `眼动：${src} · 出错了`
@@ -63,19 +63,18 @@ function rebuild(): void {
     { label: d.windowVisible() ? '隐藏 Glint 窗口' : '显示 Glint 窗口', click: () => d.toggleWindow() },
     { type: 'separator' },
     { label: running ? '暂停眼动追踪' : '开启眼动追踪', enabled: !!s, click: run({ cmd: 'gaze:toggle' }, false) },
-    // iPhone 原深感只有 Mac 版有，别的平台只有摄像头，不用选
-    ...(isMac
-      ? [
-          {
-            label: '眼动输入源',
-            enabled: !!s,
-            submenu: [
-              { label: 'Mac 摄像头', type: 'radio', checked: s?.source !== 'truedepth', click: run({ cmd: 'gaze:source', source: 'webcam' }, false) },
-              { label: 'iPhone 原深感', type: 'radio', checked: s?.source === 'truedepth', click: run({ cmd: 'gaze:source', source: 'truedepth' }, false) }
-            ]
-          } as MenuItemConstructorOptions
-        ]
-      : []),
+    // iPhone 原深感只有 Mac 版有；Glint Eye 是 USB 摄像头，两边都有
+    {
+      label: '眼动输入源',
+      enabled: !!s,
+      submenu: [
+        { label: isMac ? 'Mac 摄像头' : '摄像头', type: 'radio', checked: !s || s.source === 'webcam', click: run({ cmd: 'gaze:source', source: 'webcam' }, false) },
+        { label: 'Glint Eye', type: 'radio', checked: s?.source === 'glinteye', click: run({ cmd: 'gaze:source', source: 'glinteye' }, false) },
+        ...(isMac
+          ? [{ label: 'iPhone 原深感', type: 'radio', checked: s?.source === 'truedepth', click: run({ cmd: 'gaze:source', source: 'truedepth' }, false) } as MenuItemConstructorOptions]
+          : [])
+      ]
+    } as MenuItemConstructorOptions,
     { label: '校准…', enabled: !!s, click: run({ cmd: 'calibrate' }) },
     { type: 'separator' },
     {

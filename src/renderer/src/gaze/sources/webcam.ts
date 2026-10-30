@@ -1,10 +1,20 @@
 import { FaceDetector, extractCombinedFeatures, type FaceLandmarkerResult } from '@realeye-io/webcam-eyetracker-light-open'
 import { poseOf, rotationOf, rotFromMatrix, type FaceExpr, type HeadPos } from '../pose'
 import type { GazeFrame, SourceHooks } from '../types'
+import type { CamRotate } from '../../../../shared/types'
 import { head3dOf, type Head3D } from '../headmotion'
 
 // 输入源一：Mac 摄像头（或连续互通相机）。摄像头 → MediaPipe 人脸 478 点 → RealEye 特征（关键点 + 表情系数 + 双眼小图）
 // 选了原深感时，拍大头照还会临时借用它（只要画面和人脸框，不算视线）
+// Glint Eye 外置模组也走这里：按设备名自动认，模组横着装的话先把画面转正（原始画面 → 旋转画布 → 再当成摄像头流），校准预览、拍照、人脸框都用转正后的画面
+
+/** 启动选项：按名字找摄像头（Glint Eye）、画面顺时针转多少度 */
+export interface CamOpts {
+  match?: RegExp
+  /** 找不到时提示里怎么称呼它 */
+  matchName?: string
+  rotate?: CamRotate
+}
 
 const PROC_W = 1280
 const PROC_H = 720
@@ -25,6 +35,10 @@ export class WebcamSource {
   private frameCount = 0
   private fpsT0 = performance.now()
   private wantedCamera: string | undefined
+  private wantedOpts: CamOpts = {}
+  /** 要转画面时：原始摄像头画面放这，转好画到画布上，再用画布的流喂给 this.video */
+  private raw: HTMLVideoElement | null = null
+  private rotGen = 0
   private loading = false
   private dark = false
   private loopGen = 0
@@ -36,7 +50,7 @@ export class WebcamSource {
     navigator.mediaDevices?.addEventListener('devicechange', () => {
       this.listCameras().catch(() => undefined)
       if (this.wantRunning && (!this.running || !this.stream?.active)) {
-        setTimeout(() => this.wantRunning && this.start(this.wantedCamera), 800)
+        setTimeout(() => this.wantRunning && this.start(this.wantedCamera, this.wantedOpts), 800)
       }
     })
     this.video.muted = true
@@ -55,9 +69,10 @@ export class WebcamSource {
     return cams
   }
 
-  async start(cameraId?: string): Promise<void> {
+  async start(cameraId?: string, opts: CamOpts = {}): Promise<void> {
     if (this.loading) return
     this.wantedCamera = cameraId
+    this.wantedOpts = opts
     this.stop()
     this.wantRunning = true
     this.loading = true
@@ -75,7 +90,19 @@ export class WebcamSource {
         await this.detector.initialize()
       }
       const video: MediaTrackConstraints = { width: { ideal: PROC_W }, height: { ideal: PROC_H }, frameRate: { ideal: 30 } }
-      if (cameraId) {
+      if (opts.match) {
+        // 按名字认设备（Glint Eye），没插就报错，不退回别的摄像头
+        let cams = await this.listCameras().catch(() => [])
+        // 没授权过摄像头时拿不到设备名，先开一下默认摄像头换来权限
+        if (cams.length && cams.every((c) => c.label === '摄像头')) {
+          const tmp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          tmp.getTracks().forEach((t) => t.stop())
+          cams = await this.listCameras().catch(() => [])
+        }
+        const hit = cams.find((c) => opts.match!.test(c.label))
+        if (!hit) throw Object.assign(new Error(`没找到 ${opts.matchName || '指定的摄像头'}，插上了吗`), { name: 'NotFoundError', custom: true })
+        video.deviceId = { exact: hit.id }
+      } else if (cameraId) {
         // 指定的摄像头不在了（iPhone 走开了）就退回默认摄像头
         const cams = await this.listCameras().catch(() => [])
         if (cams.some((c) => c.id === cameraId)) video.deviceId = { exact: cameraId }
@@ -83,10 +110,10 @@ export class WebcamSource {
       this.stream = await navigator.mediaDevices.getUserMedia({ video, audio: false })
       this.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         this.hooks.status({ state: 'error', error: '摄像头断开了', face: false })
-        setTimeout(() => this.wantRunning && this.start(this.wantedCamera), 1500)
+        setTimeout(() => this.wantRunning && this.start(this.wantedCamera, this.wantedOpts), 1500)
       })
       const track = this.stream.getVideoTracks()[0]
-      this.video.srcObject = this.stream
+      this.video.srcObject = opts.rotate ? await this.rotated(this.stream, opts.rotate) : this.stream
       await this.video.play()
       const cams = await this.listCameras()
       this.hooks.status({
@@ -100,7 +127,9 @@ export class WebcamSource {
       const notFound = e?.name === 'NotFoundError' || /not found/i.test(e?.message || '')
       this.hooks.status({
         state: 'error',
-        error: notFound
+        error: e?.custom
+          ? e.message
+          : notFound
           ? window.lookask.platform === 'darwin'
             ? '找不到摄像头。合着盖的话，可以拿 iPhone 当摄像头'
             : '找不到摄像头'
@@ -121,6 +150,7 @@ export class WebcamSource {
     }
     this.stream?.getTracks().forEach((t) => t.stop())
     this.stream = null
+    this.stopRotate()
     this.video.srcObject = null
     this.hooks.status({ state: 'off', face: false, fps: 0 })
   }
@@ -147,11 +177,52 @@ export class WebcamSource {
       this.watchdog = setInterval(() => {
         if (!this.running) return
         if (performance.now() - this.lastProcessAt > 1500) {
+          this.raw?.play().catch(() => undefined)
           this.video.play().catch(() => undefined)
           this.loop()
         }
       }, 1000)
     }
+  }
+
+  /** 把摄像头画面顺时针转 deg 度，返回转好的流 */
+  private async rotated(src: MediaStream, deg: CamRotate): Promise<MediaStream> {
+    this.stopRotate()
+    const raw = document.createElement('video')
+    raw.muted = true
+    raw.playsInline = true
+    raw.srcObject = src
+    await raw.play()
+    const w = raw.videoWidth || PROC_W
+    const h = raw.videoHeight || PROC_H
+    const side = deg === 90 || deg === 270
+    const c = document.createElement('canvas')
+    c.width = side ? h : w
+    c.height = side ? w : h
+    const ctx = c.getContext('2d')!
+    this.raw = raw
+    const gen = ++this.rotGen
+    const v = raw as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }
+    const draw = () => {
+      if (gen !== this.rotGen) return
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.translate(c.width / 2, c.height / 2)
+      ctx.rotate((deg * Math.PI) / 180)
+      ctx.drawImage(raw, -w / 2, -h / 2, w, h)
+      if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(draw)
+      else setTimeout(draw, 33)
+    }
+    draw()
+    return c.captureStream(30)
+  }
+
+  private stopRotate(): void {
+    this.rotGen++
+    if (!this.raw) return
+    // 转好的画布流也要停掉，不然画布一直挂着
+    ;(this.video.srcObject as MediaStream | null)?.getTracks().forEach((t) => t.stop())
+    this.raw.srcObject = null
+    this.raw = null
   }
 
   private process(): void {

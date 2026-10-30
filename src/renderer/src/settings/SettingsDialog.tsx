@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { Provider, Settings, ModelRef, TdStatus, TdMount } from '../../../shared/types'
+import type { Provider, Settings, ModelRef, TdStatus, TdMount, CamRotate } from '../../../shared/types'
 import { useStore, uid } from '../store'
 import { settingsStore, updateSettings, uiStore, la, toast } from '../appState'
 import { gaze } from '../gaze/engine'
 import { avatarStore, clearAvatar } from '../avatar/avatar'
 import { MOUNT_LABEL } from '../gaze/td/mount'
-import { CAM_NAME, HAS_TRUEDEPTH, combo, isMac } from '../platform'
+import { CAM_NAME, HAS_TRUEDEPTH, combo, isMac, sourceName } from '../platform'
 import { BAILIAN_JEV_CONSOLE, isBailianJev, jevMissing, jevWorkspace, parseWorkspace } from '../../../shared/jev'
 
 // 设置：模型服务商（OpenAI 兼容 / Anthropic）增删改、三路模型分配、Jev 网关、眼动参数（输入源、iPhone 原深感配对）
@@ -266,16 +266,19 @@ export function SettingsDialog(): React.JSX.Element | null {
       // 换了输入源就按新的重启；原深感换了摆放位置，要重新校准才准
       if (before && before.source !== draft.gaze.source) {
         await gaze.start(draft.gaze.cameraId || undefined)
-        toast(draft.gaze.source === 'truedepth' ? '换成 iPhone 原深感了' : '换回 Mac 摄像头了', 'ok')
+        toast(`换成${sourceName(draft.gaze.source)}了`, 'ok')
         if (!gaze.isCalibrated()) toast('这个输入源还没校准，点右上角「校准」', 'info', { ttl: 6000 })
       } else {
         if (before && draft.gaze.source === 'truedepth' && before.tdMount !== draft.gaze.tdMount) toast('手机换了位置，要重新校准', 'warn')
+        // Glint Eye 换了旋转角度要重开摄像头，画面才转过来
+        if (before && draft.gaze.source === 'glinteye' && before.glintRotate !== draft.gaze.glintRotate) await gaze.start()
         toast('已保存', 'ok')
       }
     }
     uiStore.patch({ showSettings: false })
   }
   const td = draft.gaze.source === 'truedepth'
+  const ge = draft.gaze.source === 'glinteye'
 
   return (
     <div className="modal-mask" onClick={() => close(true)}>
@@ -432,20 +435,32 @@ export function SettingsDialog(): React.JSX.Element | null {
 
           {tab === 'gaze' && (
             <div className="form">
-              {/* iPhone 原深感只有 Mac 版有，别的平台只有摄像头，不用选 */}
-              {HAS_TRUEDEPTH && (
+              {/* iPhone 原深感只有 Mac 版有；Glint Eye 是 USB 摄像头，两边都有 */}
+              <label>
+                输入源
+                <select
+                  value={draft.gaze.source}
+                  onChange={(e) => set({ gaze: { ...draft.gaze, source: e.target.value as Settings['gaze']['source'] } })}
+                >
+                  <option value="webcam">{CAM_NAME}</option>
+                  <option value="glinteye">Glint Eye</option>
+                  {HAS_TRUEDEPTH && <option value="truedepth">iPhone 原深感</option>}
+                </select>
+              </label>
+              {ge ? (
                 <label>
-                  输入源
+                  画面方向
                   <select
-                    value={draft.gaze.source}
-                    onChange={(e) => set({ gaze: { ...draft.gaze, source: e.target.value as Settings['gaze']['source'] } })}
+                    value={draft.gaze.glintRotate ?? 90}
+                    onChange={(e) => set({ gaze: { ...draft.gaze, glintRotate: Number(e.target.value) as CamRotate } })}
                   >
-                    <option value="webcam">{CAM_NAME}</option>
-                    <option value="truedepth">iPhone 原深感</option>
+                    <option value={0}>不转</option>
+                    <option value={90}>顺时针转 90°</option>
+                    <option value={180}>转 180°</option>
+                    <option value={270}>逆时针转 90°</option>
                   </select>
                 </label>
-              )}
-              {td ? (
+              ) : td ? (
                 <>
                   <label>
                     iPhone 放在哪
@@ -535,7 +550,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                   onClick={async () => {
                     await updateSettings(() => draft)
                     await gaze.start(draft.gaze.cameraId || undefined)
-                    toast(td ? '切到 iPhone 了，等手机连上' : '摄像头重启了', 'ok')
+                    toast(td ? '切到 iPhone 了，等手机连上' : ge ? 'Glint Eye 重启了' : '摄像头重启了', 'ok')
                   }}
                 >
                   {td ? '开始接收 iPhone' : '重启摄像头'}
@@ -544,7 +559,7 @@ export function SettingsDialog(): React.JSX.Element | null {
                   清除漂移校正
                 </button>
                 <button className="btn sm ghost" onClick={() => gaze.clearModel()}>
-                  删除{g.source === 'truedepth' ? '原深感' : '摄像头'}校准
+                  删除{g.source === 'truedepth' ? '原深感' : g.source === 'glinteye' ? ' Glint Eye ' : '摄像头'}校准
                 </button>
               </div>
 

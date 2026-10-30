@@ -1,5 +1,6 @@
 // 界面上和平台有关的写法集中在这儿：修饰键（Mac ⌥ / Windows Alt）、按住说话的键、摄像头叫法、iPhone 原深感只有 Mac 版有。
 // 直接读 window.lookask，不经 appState，免得循环引用
+import type { GazeSourceKind } from '../../shared/types'
 
 export const isMac = window.lookask.platform === 'darwin'
 
@@ -20,6 +21,11 @@ export const TALK_KEY = isMac ? '空格' : 'V'
 
 /** 眼动输入源里的摄像头叫什么 */
 export const CAM_NAME = isMac ? 'Mac 摄像头' : '摄像头'
+
+/** 眼动输入源的名字（设置、提示、菜单栏共用） */
+export function sourceName(kind: GazeSourceKind): string {
+  return kind === 'truedepth' ? 'iPhone 原深感' : kind === 'glinteye' ? 'Glint Eye' : CAM_NAME
+}
 
 /** iPhone 原深感（手机把数据发给 Mac 上的原生助手）只有 Mac 版有 */
 export const HAS_TRUEDEPTH = isMac

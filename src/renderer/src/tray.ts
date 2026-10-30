@@ -5,6 +5,7 @@ import { input } from './input/joycon'
 import { findJoyCons } from './input/haptics'
 import { switchSide } from './focus/focus'
 import { openViaDialog, newTerminal } from './panes/docs'
+import { sourceName } from './platform'
 
 // 菜单栏图标：把状态推给主进程，执行菜单里点的命令
 
@@ -47,7 +48,7 @@ async function run(c: TrayCommand): Promise<void> {
       if (!s || s.gaze.source === c.source) return
       await updateSettings((x) => ({ ...x, gaze: { ...x.gaze, source: c.source } }))
       await gaze.start(s.gaze.cameraId || undefined)
-      toast(c.source === 'truedepth' ? '换成 iPhone 原深感了' : '换回 Mac 摄像头了', 'ok')
+      toast(`换成${sourceName(c.source)}了`, 'ok')
       if (!gaze.isCalibrated()) toast('这个输入源还没校准，从菜单栏图标里点「校准」', 'info', { ttl: 6000 })
       return
     }

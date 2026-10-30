@@ -11,16 +11,19 @@ import { fitTd, predictTd, type TdModel } from './td/model'
 import { reproject, smoothHead, type Head3D, type ScreenGeo } from './headmotion'
 
 // 眼动引擎：输入源 → 特征 → 校准模型映射到屏幕坐标 → 漂移校正 → One Euro 平滑 → 注视检测
-// 输入源两种（gaze/sources/）：
-// - Mac 摄像头：MediaPipe 人脸 478 点 → RealEye 特征 → 岭回归 → 按三维头姿重新投影（头动补偿，见 headmotion.ts）
+// 输入源三种（gaze/sources/）：
+// - Mac 摄像头 / Glint Eye 外置红外摄像头（同一套 WebcamSource，Glint Eye 按名字自动认设备、可转画面）：MediaPipe 人脸 478 点 → RealEye 特征 → 岭回归 → 按三维头姿重新投影（头动补偿，见 headmotion.ts）
 // - iPhone 原深感：头的三维位姿 + 双眼朝向 → 视线和屏幕平面求交 → 几何校准（头挪、歪、前后动都不偏）
-// 两种源的校准模型分开存，切来切去不用重校。输出统一用「屏幕坐标（点）」，谁用谁自己换算到窗口坐标。
+// 每种源的校准模型分开存，切来切去不用重校。输出统一用「屏幕坐标（点）」，谁用谁自己换算到窗口坐标。
 
 export type { GazeFrame, GazeSample, GazeStatus, TdLink } from './types'
 export { poseOf, rotationOf, meanPose, type HeadPos, type FaceExpr } from './pose'
 
 const MODEL_KEY = 'lookask.gazeModel.v1'
 const TD_MODEL_KEY = 'lookask.gazeModel.td.v1'
+const GLINT_MODEL_KEY = 'lookask.gazeModel.glinteye.v1'
+/** Glint Eye 模组在系统里报的名字（现在是 DECXIN 的 UVC 模组） */
+const GLINT_EYE_LABEL = /glint\s*eye|decxin/i
 
 type Residual = { px: number; py: number; rx: number; ry: number; t: number; w: number }
 
@@ -82,9 +85,9 @@ class GazeEngine {
 
   constructor() {
     this.webcam = new WebcamSource({
-      frame: (f) => this.ingest('webcam', f),
+      frame: (f) => this.ingest(this.kind === 'truedepth' ? 'webcam' : this.kind, f),
       status: (p) => {
-        if (this.kind === 'webcam') this.status.patch(p)
+        if (this.kind !== 'truedepth') this.status.patch(p)
         else if (p.cameras) this.status.patch({ cameras: p.cameras })
       }
     })
@@ -108,7 +111,7 @@ class GazeEngine {
 
   /** 头动补偿正在起作用：摄像头输入源 + 模型带着校准坐姿 + 设置没关 */
   headCompActive(): boolean {
-    return this.kind === 'webcam' && !!this.model && !!this.ridgeHead && settingsStore.get().s?.gaze.headComp !== false
+    return this.kind !== 'truedepth' && !!this.model && !!this.ridgeHead && settingsStore.get().s?.gaze.headComp !== false
   }
 
   /** 摄像头画面（校准预览、拍大头照用；输入源是原深感时只有借用期间才有画面） */
@@ -137,12 +140,14 @@ class GazeEngine {
 
   /** 按设置里选的输入源启动（摄像头的话用 cameraId） */
   async start(cameraId?: string): Promise<void> {
-    const want: GazeSourceKind = settingsStore.get().s?.gaze.source === 'truedepth' ? 'truedepth' : 'webcam'
+    const g = settingsStore.get().s?.gaze
+    const want: GazeSourceKind = g?.source === 'truedepth' || g?.source === 'glinteye' ? g.source : 'webcam'
     this.setSource(want)
     if (want === 'truedepth') {
       await this.td.start()
       await this.td.refreshDisplay()
-    } else await this.webcam.start(cameraId)
+    } else if (want === 'glinteye') await this.webcam.start(undefined, { match: GLINT_EYE_LABEL, matchName: 'Glint Eye', rotate: g?.glintRotate ?? 90 })
+    else await this.webcam.start(cameraId)
   }
 
   stop(): void {
@@ -156,6 +161,8 @@ class GazeEngine {
     if (this.kind === 'truedepth') this.td.stop()
     else if (!this.webcamBorrowed) this.webcam.stop()
     this.kind = kind
+    // Mac 摄像头和 Glint Eye 各有一份岭回归模型，换过去就读对应那份
+    if (kind !== 'truedepth') this.loadRidge()
     this.filter.reset()
     this.fixations.reset()
     this.residuals = []
@@ -174,14 +181,14 @@ class GazeEngine {
       faceScale: null,
       driftPx: 0,
       link: null,
-      cameraLabel: kind === 'truedepth' ? 'iPhone 原深感' : ''
+      cameraLabel: kind === 'truedepth' ? 'iPhone 原深感' : kind === 'glinteye' ? 'Glint Eye' : ''
     })
     this.applyModelStatus()
   }
 
   /** 输入源是原深感时，拍大头照要临时开一下摄像头 */
   async borrowWebcam(cameraId?: string): Promise<void> {
-    if (this.kind === 'webcam' || this.webcamBorrowed) return
+    if (this.kind !== 'truedepth' || this.webcamBorrowed) return
     this.webcamBorrowed = true
     await this.webcam.start(cameraId)
   }
@@ -189,7 +196,7 @@ class GazeEngine {
   releaseWebcam(): void {
     if (!this.webcamBorrowed) return
     this.webcamBorrowed = false
-    if (this.kind !== 'webcam') this.webcam.stop()
+    if (this.kind === 'truedepth') this.webcam.stop()
   }
 
   /** 摄像头画面能不能用（拍大头照前判断） */
@@ -307,25 +314,44 @@ class GazeEngine {
     return this.tdModel
   }
 
+  /** 当前摄像头类输入源的岭回归模型存在哪 */
+  private get ridgeKey(): string {
+    return this.kind === 'glinteye' ? GLINT_MODEL_KEY : MODEL_KEY
+  }
+
   private loadModels(): void {
+    this.loadRidge()
+    this.loadTd()
+    this.applyModelStatus()
+  }
+
+  private loadRidge(): void {
+    const key = this.ridgeKey
+    this.model = null
+    this.ridgeScale = null
+    this.ridgeRef = null
+    this.ridgeHead = null
     try {
-      const raw = localStorage.getItem(MODEL_KEY)
+      const raw = localStorage.getItem(key)
       if (raw) {
         const m = JSON.parse(raw) as RidgeModel
         if (m && m.d > 0 && m.betaX?.length === m.d) {
           this.model = m
-          const sc = Number(localStorage.getItem(MODEL_KEY + '.scale'))
+          const sc = Number(localStorage.getItem(key + '.scale'))
           this.ridgeScale = sc > 0 ? sc : null
-          const ref = JSON.parse(localStorage.getItem(MODEL_KEY + '.pose') || 'null') as HeadPos | null
+          const ref = JSON.parse(localStorage.getItem(key + '.pose') || 'null') as HeadPos | null
           // 老版本只存了脸宽，那就只能提醒前后
           this.ridgeRef = ref ?? (sc > 0 ? { cx: NaN, cy: NaN, w: sc } : null)
-          const head = JSON.parse(localStorage.getItem(MODEL_KEY + '.head3d') || 'null')
+          const head = JSON.parse(localStorage.getItem(key + '.head3d') || 'null')
           this.ridgeHead = head?.ref?.r?.length === 9 && head.geo?.k > 0 ? head : null
         }
       }
     } catch {
       /* 旧模型坏了就当没校准 */
     }
+  }
+
+  private loadTd(): void {
     try {
       const raw = localStorage.getItem(TD_MODEL_KEY)
       if (raw) {
@@ -338,7 +364,6 @@ class GazeEngine {
     } catch {
       /* 同上 */
     }
-    this.applyModelStatus()
   }
 
   private applyModelStatus(): void {
@@ -366,15 +391,16 @@ class GazeEngine {
     this.ridgeScale = faceScale
     this.ridgeRef = pose
     this.ridgeHead = head
+    const key = this.ridgeKey
     try {
-      localStorage.setItem(MODEL_KEY, JSON.stringify(m))
-      localStorage.setItem(MODEL_KEY + '.scale', String(faceScale ?? ''))
-      localStorage.setItem(MODEL_KEY + '.pose', JSON.stringify(pose))
-      localStorage.setItem(MODEL_KEY + '.head3d', JSON.stringify(head))
+      localStorage.setItem(key, JSON.stringify(m))
+      localStorage.setItem(key + '.scale', String(faceScale ?? ''))
+      localStorage.setItem(key + '.pose', JSON.stringify(pose))
+      localStorage.setItem(key + '.head3d', JSON.stringify(head))
     } catch {
       /* 存不下就只在本次会话有效 */
     }
-    if (this.kind === 'webcam') this.afterNewModel()
+    if (this.kind !== 'truedepth') this.afterNewModel()
   }
 
   setTdModel(m: TdModel, pose: HeadPos | null): void {
@@ -397,8 +423,8 @@ class GazeEngine {
     } else {
       this.model = null
       this.ridgeHead = null
-      localStorage.removeItem(MODEL_KEY)
-      localStorage.removeItem(MODEL_KEY + '.head3d')
+      localStorage.removeItem(this.ridgeKey)
+      localStorage.removeItem(this.ridgeKey + '.head3d')
     }
     this.applyModelStatus()
   }
