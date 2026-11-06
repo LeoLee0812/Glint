@@ -21,8 +21,8 @@ android {
         // 手柄的震动、电量、陀螺仪都要 Android 12 的 InputDevice 接口
         minSdk = 31
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.2"
+        versionCode = 3
+        versionName = "0.1.3"
     }
 
     signingConfigs {
