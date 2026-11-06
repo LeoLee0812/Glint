@@ -229,8 +229,13 @@ class UvcCamera(private val ctx: Context, private val emit: (JSONObject) -> Unit
         val submit = NativeLong(USBDEVFS_SUBMITURB)
         val reap = NativeLong(USBDEVFS_REAPURB)
         var failure: String? = null
+        // 没在内核手里的 URB。内核每次提交都要申请一块连续内存，内存碎片多时会偶尔报 ENOMEM：
+        // 这时留到下一轮再交，其它 URB 还在收，不用断流
+        val idle = ArrayDeque(urbs.map { it.first })
+        var inFlight = 0
+        var oomSince = 0L
+        var oomCount = 0
         try {
-            for ((m, _) in urbs) if (libc.ioctl(fd, submit, m) < 0) throw IllegalStateException("提交 URB 失败 errno=${Native.getLastError()}")
             val frame = ByteArrayOutputStream(512 * 1024)
             var fid = -1
             var bad = false
@@ -239,6 +244,27 @@ class UvcCamera(private val ctx: Context, private val emit: (JSONObject) -> Unit
             var frames = 0L
             var t0 = System.currentTimeMillis()
             while (running) {
+                while (idle.isNotEmpty()) {
+                    if (libc.ioctl(fd, submit, idle.first()) < 0) {
+                        val e = Native.getLastError()
+                        if (e == 4) continue // EINTR
+                        if (e != ENOMEM) throw IllegalStateException("提交 URB 失败 errno=$e")
+                        oomCount++
+                        if (oomSince == 0L) oomSince = System.currentTimeMillis()
+                        break
+                    }
+                    idle.removeFirst()
+                    inFlight++
+                    oomSince = 0L
+                }
+                if (inFlight == 0) {
+                    // 一个都交不上：连续 3 秒才算真的断了，交给页面重开
+                    if (System.currentTimeMillis() - oomSince > OOM_GIVE_UP_MS) throw IllegalStateException("提交 URB 失败 errno=$ENOMEM")
+                    // 队列空过，这一帧中间有缺口，不能当完整帧交出去
+                    bad = true
+                    Thread.sleep(2)
+                    continue
+                }
                 if (libc.ioctl(fd, reap, ref) < 0) {
                     val e = Native.getLastError()
                     if (e == 4) continue // EINTR
@@ -246,6 +272,7 @@ class UvcCamera(private val ctx: Context, private val emit: (JSONObject) -> Unit
                 }
                 val idx = ref.value.getLong(48).toInt()
                 val (m, b) = urbs[idx]
+                inFlight--
                 for (i in 0 until PACKETS) {
                     val off = 56L + 12 * i
                     val n = m.getInt(off + 4)
@@ -274,11 +301,12 @@ class UvcCamera(private val ctx: Context, private val emit: (JSONObject) -> Unit
                 }
                 m.setInt(4, 0)
                 m.setInt(28, 0)
-                if (libc.ioctl(fd, submit, m) < 0) throw IllegalStateException("重新提交失败 errno=${Native.getLastError()}")
+                idle.addLast(m)
                 val now = System.currentTimeMillis()
                 if (now - t0 >= 5000) {
-                    Log.d(TAG, "帧率 ${frames * 1000 / (now - t0)}")
+                    Log.d(TAG, "帧率 ${frames * 1000 / (now - t0)} 内存不足重试 $oomCount")
                     frames = 0
+                    oomCount = 0
                     t0 = now
                 }
             }
@@ -353,8 +381,12 @@ class UvcCamera(private val ctx: Context, private val emit: (JSONObject) -> Unit
 
     companion object {
         const val TAG = "GlintUvc"
-        const val URB_COUNT = 8
-        const val PACKETS = 32
+        // 单个 URB 的缓冲区要连续内存：最大 2880 字节 × 8 包 = 23KB，页阶不超过 3，内核申请时会尽力回收整理；
+        // 原来 32 包要 92KB，开机久了经常申请失败。总缓冲仍是 256 个微帧（32 毫秒）
+        const val URB_COUNT = 32
+        const val PACKETS = 8
+        const val ENOMEM = 12
+        const val OOM_GIVE_UP_MS = 3000L
         // ioctl 编号（aarch64）：_IOR('U',10,56 字节)、_IO('U',11)、_IOW('U',12,指针)、_IOW('U',13,指针)
         const val USBDEVFS_SUBMITURB = 0x8038550AL
         const val USBDEVFS_DISCARDURB = 0x550BL
