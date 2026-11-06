@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   BridgeEvent,
+  GpuEvent,
   DisplayInfo,
   TdFrame,
   TdStatus,
@@ -37,6 +38,10 @@ const api = {
     abort: (reqId: string) => ipcRenderer.send('llm:abort', reqId),
     onDelta: (fn: (d: LlmDelta) => void) => on('llm:delta', fn),
     onDone: (fn: (d: LlmDone) => void) => on('llm:done', fn)
+  },
+  gpu: {
+    watch: (on: boolean) => ipcRenderer.send('gpu:watch', on),
+    onEvent: (fn: (e: GpuEvent) => void) => on('gpu:event', fn)
   },
   pty: {
     create: (opts: { cols: number; rows: number; cwd?: string }): Promise<string> => ipcRenderer.invoke('pty:create', opts),

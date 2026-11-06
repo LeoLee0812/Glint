@@ -9,6 +9,7 @@ import { GRAN_LABEL, unionBox } from '../focus/types'
 import { settingsStore, updateSettings, la, toast, uiStore } from '../appState'
 import { openDoc } from '../panes/docs'
 import { Icon } from '../ui/Icon'
+import { GpuStrip } from './GpuStrip'
 
 // 右侧对话区：焦点卡片 + 快捷动作 + 流式回答；回答本身也能被眼睛「看中」再追问
 // 右侧模式（右手柄 +）下追问回答里的某一处，解释不塞进主对话，而是在下面裂变出一个解释窗口，可以一层层往下问
@@ -346,6 +347,8 @@ export function ChatPane(): React.JSX.Element {
 
       {forkOpen && <ForkPanel cards={chat.fork} />}
 
+      {/* 放在输入区上方：对话区右上角有小人卡片，放顶部最新的曲线正好被它盖住 */}
+      <GpuStrip />
       <div className="composer">
         <FocusChip />
         <div className="quick">

@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import type { LlmRequest, Provider, Settings, Rect, TrayStatus } from '../shared/types'
 import { loadSettings, saveSettings } from './settings'
 import { startStream, abortStream, listModels, testProvider } from './llm'
+import { gpuWatch } from './gpuMon'
 import { startBridge, stopBridge, onBridge, sendBridge } from './bridge'
 import { createPty, writePty, resizePty, killPty, killAllPty } from './pty'
 import { qwenCodeEnv } from './qwenCode'
@@ -234,6 +235,7 @@ function registerIpc(): void {
     startStream(req, (ch, payload) => send(ch, payload))
   })
   ipcMain.on('llm:abort', (_e, reqId: string) => abortStream(reqId))
+  ipcMain.on('gpu:watch', (_e, on: boolean) => gpuWatch(on, (ev) => send('gpu:event', ev)))
 
   ipcMain.handle('pty:create', (_e, opts: { cols: number; rows: number; cwd?: string }) => {
     const s = loadSettings()
@@ -406,6 +408,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('before-quit', () => {
+    gpuWatch(false, () => undefined)
     destroyTray()
     killAllPty()
     stopBridge()

@@ -8,6 +8,7 @@ import type { FocusContext, Granularity } from '../focus/types'
 import { clip } from '../focus/types'
 import { LOCAL_TRANSLATE_MODEL } from '../../../shared/defaults'
 import { buildPrompt, bubbleText, localTranslatePrompt, FORK_HINT, type Action } from './prompts'
+import { gpuTranslateStart, gpuTranslateEnd } from './gpuMonitor'
 
 // 右侧对话：一问一答 + 流式输出；每次提问自动带上「你正在看的东西」
 // 右侧模式（右手柄 +）下对回答里某一处提问，不往主对话里塞，而是在下面「裂变」出一个解释窗口，
@@ -104,6 +105,7 @@ la.llm.onDelta((d) => {
 })
 
 la.llm.onDone((d) => {
+  gpuTranslateEnd(d.reqId)
   const st = streams.get(d.reqId)
   if (!st) return
   if (st.timer) clearTimeout(st.timer)
@@ -237,6 +239,7 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
   const reqId = uid('req')
   streams.set(reqId, { msgId: botMsg.id, buf: '', reasoning: '', timer: null, t0: performance.now() })
   chatStore.patch({ busy: reqId })
+  if (localPrompt) gpuTranslateStart(reqId)
   la.llm.start({
     reqId,
     model,

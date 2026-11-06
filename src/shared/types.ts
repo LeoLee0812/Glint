@@ -244,3 +244,8 @@ export type TrayCommand =
   | { cmd: 'help' }
   /** 找手柄：让两只手柄「哔哔」响几秒 */
   | { cmd: 'joy:find' }
+
+/** 本地翻译时的显卡采样；unavailable 表示这台机器读不到（没有 N 卡或驱动异常） */
+export type GpuEvent =
+  | { t: 'sample'; name: string; util: number; memUsed: number; memTotal: number; power: number; temp: number }
+  | { t: 'unavailable' }

@@ -768,6 +768,52 @@ kbd {
   padding: 10px 14px;
   border-bottom: 0.5px solid var(--sep);
 }
+.gpu-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  padding: 10px 14px;
+  border-top: 0.5px solid var(--sep);
+  background: var(--bg-soft);
+}
+.gpu-now {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.gpu-now b {
+  font-size: 28px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.gpu-strip.running .gpu-now b {
+  color: var(--blue);
+}
+.gpu-curve {
+  flex: 1;
+  min-width: 0;
+  height: 72px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+.gpu-band {
+  fill: var(--blue-tint);
+}
+.gpu-area {
+  fill: var(--blue);
+  opacity: 0.14;
+}
+.gpu-line {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 2;
+}
 .model-pick {
   min-width: 0;
   flex-shrink: 1;
