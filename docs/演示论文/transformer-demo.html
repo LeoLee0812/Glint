@@ -1,0 +1,36 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Transformer 架构导读</title>
+<!-- 用华文黑体：宋体、苹方导出的 PDF，文字层里“文、示、用”等字会变成康熙部首码位，选词和翻译都会出错 -->
+<style>
+@page{size:A4;margin:20mm 18mm}
+body{font-family:"STHeiti",sans-serif;font-size:11pt;line-height:1.75;color:#222}
+h1{font-size:20pt;text-align:center;margin:0 0 6pt;font-family:"STHeiti",sans-serif}
+.sub{text-align:center;color:#555;font-size:10pt;margin-bottom:14pt}
+h2{font-size:13pt;margin:14pt 0 4pt;font-family:"STHeiti",sans-serif}
+p{margin:0 0 7pt;text-align:justify;text-indent:2em}
+.abs{background:#f6f3ea;padding:8pt 12pt;font-size:10pt;margin-bottom:10pt}.abs p{text-indent:0;margin:0}
+.eq{text-align:center;font-family:"Times New Roman","STHeiti",serif;font-style:italic;margin:6pt 0 8pt}
+table{border-collapse:collapse;margin:6pt auto 8pt;font-size:10pt}td,th{border-top:1px solid #888;border-bottom:1px solid #888;padding:3pt 10pt}
+.ref{font-size:9.5pt;text-indent:0}
+</style></head><body>
+<h1>Transformer 架构导读</h1>
+<div class="sub">Glint 瞳问演示文档 · 用于练习看词提问</div>
+<div class="abs"><p><b>摘要：</b>本文用中文梳理 Transformer 的核心设计。它放弃了循环结构，完全依靠 attention 建模序列中的依赖关系，因此可以并行训练，也更容易捕捉长距离依赖。文中保留了常见英文术语，读到不熟悉的单词时，可以直接看着它提问。</p></div>
+<h2>1 为什么要离开循环网络</h2>
+<p>循环神经网络按时间步依次处理序列，后一步必须等前一步算完，这个顺序限制使并行化（parallelization）十分困难。序列一长，较早位置的信息还要穿过许多步才能传到后面，模型容易遗忘，训练时也容易出现梯度消失（vanishing gradient）。</p>
+<p>Transformer 的思路是让每个位置直接查看所有其他位置。任意两个位置之间的连接只隔一步，长距离依赖不再需要逐步传递，这也是它名声最大的贡献。</p>
+<h2>2 缩放点积注意力</h2>
+<p>注意力的输入是 query、key 和 value 三组向量。模型用 query 与每个 key 计算相似度，归一化后得到权重，再对 value 做加权求和：</p>
+<div class="eq">Attention(Q, K, V) = softmax(QK<sup>T</sup> / √d<sub>k</sub>) V</div>
+<p>除以 √d<sub>k</sub> 是一个看似微小却很关键的细节。当维度较大时，点积的方差随之变大，softmax 会被推入饱和区，梯度变得极小。这种缩放（scaling）让训练保持稳定。</p>
+<h2>3 多头注意力</h2>
+<p>单组注意力只能得到一种加权方式。多头注意力（multi-head attention）把向量线性投影成多份，在不同的表示子空间里分别计算，最后拼接（concatenate）起来。原始论文使用 8 个头，每个头的维度是 64，总计算量与单头相近。</p>
+<h2>4 位置编码</h2>
+<p>注意力本身不关心顺序，打乱输入后，每个位置得到的结果只是跟着调换。为了补上顺序信息，模型把位置编码（positional encoding）加到词向量上。原始论文采用不同频率的正弦和余弦函数，这种设计是确定性的（deterministic），不需要训练参数。</p>
+<h2>5 编码器与解码器</h2>
+<p>编码器（encoder）和解码器（decoder）各由 6 层堆叠而成。每层都包含注意力和前馈网络（feed-forward network），并配有残差连接（residual connection）与层归一化（layer normalization）。解码器还多一层交叉注意力，并用掩码（mask）遮住未来的位置，防止模型在预测时提前看到答案。</p>
+<table><tr><th>超参数</th><th>原始论文取值</th></tr><tr><td>模型维度 d<sub>model</sub></td><td>512</td></tr><tr><td>注意力头数 h</td><td>8</td></tr><tr><td>堆叠层数 N</td><td>6</td></tr><tr><td>前馈层维度 d<sub>ff</sub></td><td>2048</td></tr></table>
+<h2>6 影响</h2>
+<p>Transformer 最初面向机器翻译，在 WMT 2014 英德任务上取得了 28.4 的 BLEU 分数，同时大幅缩短了训练时间。此后，这套架构成为大语言模型的基础。理解了 attention 这一个机制，后续许多模型的设计都会变得容易看懂。</p>
+<h2>参考文献</h2>
+<p class="ref">Vaswani A, Shazeer N, Parmar N, et al. Attention Is All You Need. NeurIPS, 2017. arXiv:1706.03762.</p>
+</body></html>

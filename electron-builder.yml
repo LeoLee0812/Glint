@@ -58,6 +58,10 @@ win:
       filter:
         - lookask-bridge.cjs
         - prebuilds/HID-win32-x64/**
+        # 本地语音子进程和 sherpa-onnx 的原生模块、DLL
+        - lookask-asr.cjs
+        - sherpa-onnx-win-x64/*.node
+        - sherpa-onnx-win-x64/*.dll
   files:
     # 平台段写了 files 就不再沿用顶层那份白名单（只写排除项会退回「整个仓库全打进去」，在 Mac 上交叉打包时把 ios/.build 也塞进了 asar），
     # 所以这里把顶层的三条再写一遍
