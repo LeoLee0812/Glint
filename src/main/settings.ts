@@ -101,10 +101,24 @@ function migrate(s: Settings, def: Settings): boolean {
 /** Windows 翻译默认走本地模型；只切还是默认云端模型的，本地没开时 chatStore 会退回云端 */
 function useLocalTranslate(s: Settings): boolean {
   const local = s.providers.find((p) => p.id === 'ollama')
-  if (!local || local.models.includes(LOCAL_TRANSLATE_MODEL)) return false
-  local.models.push(LOCAL_TRANSLATE_MODEL)
-  if (s.fastModel.providerId === 'qwen' && s.fastModel.model === 'qwen3.8-flash') s.fastModel = { providerId: 'ollama', model: LOCAL_TRANSLATE_MODEL }
-  return true
+  if (!local) return false
+  let changed = false
+  // 老版本的本地翻译模型换成千问：翻译原来选的是它就直接跟过来
+  const old = local.models.indexOf('hy-mt:1.8b')
+  if (old >= 0) {
+    local.models.splice(old, 1)
+    changed = true
+  }
+  if (s.fastModel.model === 'hy-mt:1.8b') {
+    s.fastModel = { providerId: 'ollama', model: LOCAL_TRANSLATE_MODEL }
+    changed = true
+  }
+  if (!local.models.includes(LOCAL_TRANSLATE_MODEL)) {
+    local.models.push(LOCAL_TRANSLATE_MODEL)
+    if (s.fastModel.providerId === 'qwen' && s.fastModel.model === 'qwen3.8-flash') s.fastModel = { providerId: 'ollama', model: LOCAL_TRANSLATE_MODEL }
+    changed = true
+  }
+  return changed
 }
 
 export function defaultSettings(): Settings {

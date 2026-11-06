@@ -1,0 +1,18 @@
+# Glint 的本地翻译模型：千问 Qwen3.5-2B（Q4，1.3GB）。qwen.gguf 和这个文件放同一目录，然后执行 ollama create qwen3.5:2b-mt -f qwen-mt.Modelfile
+# 模板里预填空的 think，关掉思考。必须 FROM 纯 GGUF 文件，FROM 魔搭模型名时这里的 TEMPLATE 不生效
+FROM ./qwen.gguf
+TEMPLATE """{{- range .Messages }}{{- if eq .Role "user" }}<|im_start|>user
+{{ .Content }}<|im_end|>
+{{ else if eq .Role "assistant" }}<|im_start|>assistant
+{{ .Content }}<|im_end|>
+{{ end }}{{- end }}<|im_start|>assistant
+<think>
+
+</think>
+
+"""
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER temperature 0.2
+PARAMETER num_ctx 4096
+PARAMETER num_predict 1024

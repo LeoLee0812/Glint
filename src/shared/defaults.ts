@@ -15,8 +15,8 @@ ${AGENT_LINE}`
 /** 本地小模型：Ollama 里的千问 3.5 4B（3.4GB，能看图）；装法见 scripts/setup-local-model.sh */
 export const LOCAL_MODEL = 'qwen3.5:4b'
 
-/** 本地翻译模型：腾讯 HY-MT1.5-1.8B（Q4，1.1GB，4GB 显存放得下），只做翻译；Windows 默认用它，装法见 README */
-export const LOCAL_TRANSLATE_MODEL = 'hy-mt:1.8b'
+/** 本地翻译模型：千问 Qwen3.5-2B（Q4，1.3GB，4GB 显存放得下），关掉思考只做翻译；Windows 默认用它，装法见 README */
+export const LOCAL_TRANSLATE_MODEL = 'qwen3.5:2b-mt'
 
 const DEFAULT_PROVIDERS: Provider[] = [
   {

@@ -140,7 +140,7 @@ export function buildPrompt(action: Action, ctx: FocusContext | null, question?:
 }
 
 /** 用户气泡里显示的简短文字 */
-/** 本地翻译模型只认官方这两句提示词，加了系统提示词或上下文，它会把这些也一起翻出来 */
+/** 本地翻译只送这两句提示词和原文，小模型带上系统提示词或上下文，容易把这些也一起翻出来 */
 export function localTranslatePrompt(ctx: FocusContext | null): string | null {
   const sel = (ctx?.selection || ctx?.paragraph || '').trim()
   if (!sel || ctx?.scan) return null
@@ -156,7 +156,7 @@ export function localTranslatePrompt(ctx: FocusContext | null): string | null {
 
 // 本地翻译模型不看上下文，单词容易译错领域（token→代币、dropout→辍学、transformer→变压器），论文里的常见术语用官方的术语提示词钉住
 const EN_TERMS: Record<string, string> = {
-  transformer: 'Transformer',
+  Transformer: 'Transformer',
   token: '词元',
   dropout: '随机失活',
   residual: '残差',

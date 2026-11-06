@@ -94,7 +94,7 @@ API 密钥 在[阿里云百炼控制台](https://bailian.console.aliyun.com/cn-b
 
 Windows 还可以把翻译和语音放到本地，没装时自动走云端：
 
-- 本地翻译：装好 Ollama，从[魔搭](https://modelscope.cn/models/Tencent-Hunyuan/HY-MT1.5-1.8B-GGUF)下载 `HY-MT1.5-1.8B-Q4_K_M.gguf`，改名 `hy.gguf`，和 `scripts/hy-mt.Modelfile` 放在同一目录，执行 `ollama create hy-mt:1.8b -f hy-mt.Modelfile`
+- 本地翻译：装好 Ollama，从[魔搭](https://modelscope.cn/models/unsloth/Qwen3.5-2B-GGUF)下载 `Qwen3.5-2B-Q4_K_M.gguf`，改名 `qwen.gguf`，和 `scripts/qwen-mt.Modelfile` 放在同一目录，执行 `ollama create qwen3.5:2b-mt -f qwen-mt.Modelfile`
 - 本地语音：把 [SenseVoice Small](https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17) 的 `model.int8.onnx` 和 `tokens.txt` 放进 `%APPDATA%\LookAsk\models\sensevoice`，重启 Glint
 
 ## 从源码构建
