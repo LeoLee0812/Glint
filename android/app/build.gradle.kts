@@ -8,7 +8,8 @@ plugins {
 // 正式签名的密钥不进仓库：android/keystore.properties（storeFile、storePassword、keyAlias、keyPassword）
 val keystore = Properties().apply {
     val f = rootProject.file("keystore.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
+    // 路径里可能有中文，按 UTF-8 读
+    if (f.exists()) f.reader(Charsets.UTF_8).use { load(it) }
 }
 
 android {
