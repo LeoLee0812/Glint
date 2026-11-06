@@ -8,8 +8,6 @@ import { GRAN_LABEL } from '../focus/types'
 import { Icon } from './Icon'
 import logoUrl from '../assets/logo.png'
 import { headAdviceStore } from '../gaze/headGuide'
-import { jevStore } from '../jev/jevBrain'
-import { JevLog } from '../jev/JevLog'
 
 // 顶栏：平时只留手柄和粒度（词 / 句 / 段 / 节，点一下换档）；摄像头 / iPhone 出问题、还没校准、坐偏了才冒出提醒
 
@@ -25,9 +23,6 @@ export function TopBar(): React.JSX.Element {
   const f = useStore(focus.state)
   const s = useStore(settingsStore).s
   const head = useStore(headAdviceStore)
-  const jev = useStore(jevStore)
-  const [jevOpen, setJevOpen] = useState(false)
-  const jevRef = useRef<HTMLButtonElement>(null)
 
   const td = g.source === 'truedepth'
   const link = g.link
@@ -116,14 +111,7 @@ export function TopBar(): React.JSX.Element {
           <Icon name={f.mode === 'hard' ? 'scope' : 'eye'} />
           {f.mode === 'none' ? GRAN_LABEL[f.unit] : (f.sel?.unit ?? GRAN_LABEL[f.gran])}
         </button>
-        {/* Jev 开着：一颗紫色药丸，正在判断时上面一个点在呼吸；点开是判断记录 */}
-        {s?.jevMode && (
-          <button ref={jevRef} className={`pill jev${jev.busy > 0 ? ' busy' : ''}`} onClick={() => setJevOpen((o) => !o)} title="Jev 判断记录">
-            Jev
-          </button>
-        )}
       </div>
-      {jevOpen && s?.jevMode && <JevLog left={jevRef.current?.getBoundingClientRect().left ?? 200} onClose={() => setJevOpen(false)} />}
       <div className="actions">
         {/* 视线跟哪一边：左蓝右红，和两只 Joy-Con 的颜色、− / + 键对上 */}
         <div className="side-seg">

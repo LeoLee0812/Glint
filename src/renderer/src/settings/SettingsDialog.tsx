@@ -6,11 +6,10 @@ import { gaze } from '../gaze/engine'
 import { avatarStore, clearAvatar } from '../avatar/avatar'
 import { MOUNT_LABEL } from '../gaze/td/mount'
 import { CAM_NAME, HAS_TRUEDEPTH, combo, isMac, sourceName } from '../platform'
-import { BAILIAN_JEV_CONSOLE, isBailianJev, jevMissing, jevWorkspace, parseWorkspace } from '../../../shared/jev'
 
-// 设置：模型服务商（OpenAI 兼容 / Anthropic）增删改、三路模型分配、Jev 网关、眼动参数（输入源、iPhone 原深感配对）
+// 设置：模型服务商（OpenAI 兼容 / Anthropic）增删改、三路模型分配、眼动参数（输入源、iPhone 原深感配对）
 
-type Tab = 'providers' | 'models' | 'jev' | 'gaze' | 'misc'
+type Tab = 'providers' | 'models' | 'gaze' | 'misc'
 
 /** 实时小人能选的百炼图像编辑模型（第一个是默认） */
 const AVATAR_MODELS: Array<[string, string]> = [
@@ -20,14 +19,6 @@ const AVATAR_MODELS: Array<[string, string]> = [
   ['qwen-image-edit-max', '千问图像编辑 Max（盲盒风）'],
   ['qwen-image-edit-plus', '千问图像编辑 Plus']
 ]
-
-/** 百炼决策模型常见的几种报错翻成一句话 */
-function jevError(e: string): string {
-  if (/Workspace endpoint access denied/i.test(e)) return '业务空间 ID 和 Key 对不上，看看是不是同一个业务空间的'
-  if (/access.?denied|403/i.test(e)) return '这个 Key 没开通决策模型，去百炼模型广场点一下开通'
-  if (/incorrect api key|invalid.?api.?key|401/i.test(e)) return 'Key 不对，看看是不是没复制全'
-  return e
-}
 
 function ProviderCard({ p, onChange, onRemove }: { p: Provider; onChange: (p: Provider) => void; onRemove: () => void }): React.JSX.Element {
   const [show, setShow] = useState(false)
@@ -230,13 +221,10 @@ export function SettingsDialog(): React.JSX.Element | null {
   const av = useStore(avatarStore)
   const [draft, setDraft] = useState<Settings | null>(null)
   const [tab, setTab] = useState<Tab>('providers')
-  const [presets, setPresets] = useState<Array<{ name: string; baseUrl: string; model: string }>>([])
-  const [jevTest, setJevTest] = useState('')
 
   useEffect(() => {
     if (ui.showSettings && cur) setDraft(structuredClone(cur))
     if (ui.showSettings) {
-      la.settings.jevPresets().then(setPresets)
       gaze.listCameras().catch(() => undefined)
       if (ui.settingsTab) {
         setTab(ui.settingsTab)
@@ -290,7 +278,6 @@ export function SettingsDialog(): React.JSX.Element | null {
               [
                 ['providers', '模型服务'],
                 ['models', '模型分配'],
-                ['jev', 'Jev 判断'],
                 ['gaze', '眼动'],
                 ['misc', '其他']
               ] as Array<[Tab, string]>
@@ -345,90 +332,6 @@ export function SettingsDialog(): React.JSX.Element | null {
               <label>
                 看图
                 <ModelSelect s={draft} value={draft.visionModel} onChange={(m) => set({ visionModel: m })} />
-              </label>
-            </div>
-          )}
-
-          {tab === 'jev' && (
-            <div className="form">
-              <p className="small dim">
-                Jev 只做判断不写字（卡住提示、提问路由、详略、数字核查）。默认用阿里云百炼的决策模型 decision-model-preview，Key 和千问共用，只需再填业务空间 ID。
-              </p>
-              <label>
-                预设
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const pr = presets.find((x) => x.name === e.target.value)
-                    if (pr) set({ jev: { ...draft.jev, baseUrl: pr.baseUrl, model: pr.model } })
-                  }}
-                >
-                  <option value="">选一个，自动填地址和模型</option>
-                  {presets.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                地址
-                <input value={draft.jev.baseUrl} onChange={(e) => set({ jev: { ...draft.jev, baseUrl: e.target.value } })} />
-              </label>
-              <label>
-                模型
-                <input value={draft.jev.model} onChange={(e) => set({ jev: { ...draft.jev, model: e.target.value } })} />
-              </label>
-              {isBailianJev(draft.jev) && (
-                <label>
-                  业务空间 ID
-                  <input
-                    value={draft.jev.workspaceId}
-                    placeholder={jevWorkspace(draft) || 'ws-xxxx，或者把控制台示例里的整条地址贴进来'}
-                    onChange={(e) => set({ jev: { ...draft.jev, workspaceId: parseWorkspace(e.target.value) || e.target.value.trim() } })}
-                  />
-                  <a className="btn sm ghost" href={BAILIAN_JEV_CONSOLE} target="_blank" rel="noreferrer">
-                    去百炼看业务空间 ID ↗
-                  </a>
-                </label>
-              )}
-              <label>
-                API Key
-                <input
-                  type="password"
-                  value={draft.jev.apiKey}
-                  placeholder={isBailianJev(draft.jev) ? '留空 = 用千问服务商的百炼 Key' : ''}
-                  onChange={(e) => set({ jev: { ...draft.jev, apiKey: e.target.value.trim() } })}
-                />
-              </label>
-              <label>
-                每天 token 上限
-                <input
-                  type="number"
-                  value={draft.jev.dailyTokenCap}
-                  onChange={(e) => set({ jev: { ...draft.jev, dailyTokenCap: Math.max(1000, Number(e.target.value) || 0) } })}
-                />
-              </label>
-              <div className="row">
-                <button
-                  className="btn sm"
-                  disabled={!!jevMissing(draft)}
-                  onClick={async () => {
-                    await updateSettings(() => draft)
-                    setJevTest('测试中…')
-                    const r = await la.jev.judge('这篇论文用自注意力替代了循环结构。', {
-                      term: { type: 'noul', instructions: 'The text mentions a machine learning architecture concept' }
-                    })
-                    setJevTest(r.ok ? `✅ 通了，${r.ms}ms` : `❌ ${jevError(r.error || '')}`)
-                  }}
-                >
-                  测试 Jev
-                </button>
-                <span className="small dim">{jevTest || jevMissing(draft)}</span>
-              </div>
-              <label className="check">
-                <input type="checkbox" checked={draft.jevMode} onChange={(e) => set({ jevMode: e.target.checked })} />
-                开启 Jev 模式
               </label>
             </div>
           )}

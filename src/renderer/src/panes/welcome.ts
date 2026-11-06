@@ -1,10 +1,12 @@
+import { isAndroid } from '../platform'
+
 // 首次打开时左侧的示范文档：一小段说明 + 拿来试眼动和手柄的练习材料（新手引导「试一试」那一步就在这儿练）
 
 export const WELCOME_MD = `# Glint 瞳问
 
 看着左边的内容按手柄，右边的 AI 就知道你问的是哪一段、哪个词。
 
-按键忘了，点右上角的 **？**。
+按键忘了，点右上角的 **？**。${isAndroid ? '没连手柄也行：双击哪一段，就解释哪一段。' : ''}
 
 ## 试一试
 
@@ -18,6 +20,5 @@ Self-attention layers connect all positions with a constant number of sequential
 
 ## 左边还能放什么
 
-- PDF、Markdown：直接拖进来，或者点标签栏的 **＋**。扫描版 PDF 也能看着问
-- 终端：点「启动 Qwen Code」，十字键帮它选选项、批准操作
-`
+- PDF、Markdown：${isAndroid ? '' : '直接拖进来，或者'}点标签栏的 **＋**。扫描版 PDF 也能看着问
+${isAndroid ? '' : '- 终端：点「启动 Qwen Code」，十字键帮它选选项、批准操作\n'}`

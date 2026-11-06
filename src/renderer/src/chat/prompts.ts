@@ -79,8 +79,6 @@ function explainTask(g: Granularity, ctx: FocusContext): string {
   }
 }
 
-const DEPTH_HINT = ['\n\n（只用一两句话回答。）', '\n\n（简短回答，一小段即可。）', '\n\n（请详细、分步骤讲清楚。）']
-
 /** 右侧模式下对回答里某一处的追问：答案进往下裂变出的解释窗口，只讲这一处 */
 export const FORK_HINT = '\n\n（这是在右侧「解释窗口」里对上面回答某一处的追问：只讲清楚焦点这一处，简短，不要把前面已经讲过的内容再讲一遍。）'
 
@@ -103,13 +101,7 @@ function capturePrompt(ctx: FocusContext | null, question?: string): string {
   return lines.join('\n\n')
 }
 
-/** depth：Jev 判断的详略档位 0~2，不传就按默认 */
-export function buildPrompt(action: Action, ctx: FocusContext | null, question?: string, depth?: number): string {
-  const hint = depth === undefined ? '' : DEPTH_HINT[Math.max(0, Math.min(2, Math.round(depth)))]
-  return buildPromptInner(action, ctx, question) + hint
-}
-
-function buildPromptInner(action: Action, ctx: FocusContext | null, question?: string): string {
+export function buildPrompt(action: Action, ctx: FocusContext | null, question?: string): string {
   const c = ctx ? formatContext(ctx) + '\n\n' : ''
   const sel = ctx?.selection || ctx?.paragraph || ''
   switch (action) {
@@ -121,6 +113,10 @@ function buildPromptInner(action: Action, ctx: FocusContext | null, question?: s
         return `${c}把附图里${what}翻译出来：原文是中文就译成英文，其他语言译成中文。公式保留原样（写成 LaTeX），术语第一次出现保留原文括注；只给译文和必要的一两句注释，不要逐字解释。`
       }
       const target = hasCJK(sel) ? '英文' : '中文'
+      // 中英混排的一节，模型容易只抄回已经是目标语言的那段，中文全丢；整段整节才要这样强调，单词用了反而会把整段都译出来
+      if (ctx?.gran === 'section' || ctx?.gran === 'paragraph') {
+        return `${c}把焦点内容从头到尾完整翻译成${target}，一段都不能漏；已经是${target}的部分原样保留。直接给译文，不要写结论或开场白。术语第一次出现保留原文括注。`
+      }
       return `${c}把焦点内容翻译成${target}。术语第一次出现保留原文括注；只给译文和必要的一两句注释，不要逐字解释。`
     }
     case 'summarize':
@@ -144,6 +140,45 @@ function buildPromptInner(action: Action, ctx: FocusContext | null, question?: s
 }
 
 /** 用户气泡里显示的简短文字 */
+/** 本地翻译模型只认官方这两句提示词，加了系统提示词或上下文，它会把这些也一起翻出来 */
+export function localTranslatePrompt(ctx: FocusContext | null): string | null {
+  const sel = (ctx?.selection || ctx?.paragraph || '').trim()
+  if (!sel || ctx?.scan) return null
+  const zh = hasCJK(sel)
+  const terms = glossaryFor(sel, ctx?.paragraph || '', zh)
+  if (terms.length) {
+    return `参考下面的翻译：\n${terms.join('\n')}\n\n将以下文本翻译为${zh ? '英语' : '中文'}，注意只需要输出翻译后的结果，不要额外解释：\n\n${sel}`
+  }
+  return zh
+    ? `Translate the following segment into English, without additional explanation.\n\n${sel}`
+    : `将以下文本翻译为中文，注意只需要输出翻译后的结果，不要额外解释：\n\n${sel}`
+}
+
+// 本地翻译模型不看上下文，单词容易译错领域（token→代币、dropout→辍学、transformer→变压器），论文里的常见术语用官方的术语提示词钉住
+const EN_TERMS: Record<string, string> = {
+  transformer: 'Transformer',
+  token: '词元',
+  dropout: '随机失活',
+  residual: '残差',
+  attention: '注意力',
+  embedding: '嵌入',
+  scaling: '缩放',
+  concatenate: '拼接',
+  gradient: '梯度'
+}
+const ZH_TERMS: Record<string, string> = { 循环: 'recurrent', 残差: 'residual', 词元: 'token', 注意力: 'attention' }
+// 只在讲模型的内容里用，免得把普通文章里的 transformer、attention 也译成术语
+const ML_SIGNAL = /neural|attention|encoder|decoder|embedding|softmax|gradient|神经|注意力|模型|训练|编码器|梯度/i
+
+function glossaryFor(sel: string, paragraph: string, zh: boolean): string[] {
+  // 大写的 Transformer 基本都是指模型；标题这种短段落没有别的信号词，也要算
+  if (!ML_SIGNAL.test(`${sel}\n${paragraph}`) && !/\bTransformer\b/.test(sel)) return []
+  if (zh) return Object.entries(ZH_TERMS).filter(([k]) => sel.includes(k)).map(([k, v]) => `${k} 翻译成 ${v}`)
+  return Object.entries(EN_TERMS)
+    .filter(([k]) => new RegExp(`\\b${k}s?\\b`, 'i').test(sel))
+    .map(([k, v]) => `${k} 翻译成 ${v}`)
+}
+
 export function bubbleText(action: Action, ctx: FocusContext | null, question?: string): string {
   if (question) return question
   const sel = (ctx?.selection || ctx?.paragraph || '').replace(/\s+/g, ' ')

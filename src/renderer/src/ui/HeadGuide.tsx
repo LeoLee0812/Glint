@@ -97,7 +97,9 @@ export function HeadGuide(): React.JSX.Element | null {
       if (!lostSince.current) lostSince.current = t
       const lost = t - lostSince.current > LOST_AFTER
       headAdviceStore.set({ advice: null, lost: lost && calibrated })
+      // 摄像头刚开、还没看到脸：别停在「摄像头没开」
       if (lost) setPhase('lost')
+      else setPhase((p) => (p === 'nocam' ? 'lost' : p))
       setLoud(false)
       return
     }

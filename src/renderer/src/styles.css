@@ -30,7 +30,6 @@
   --purple-tint: rgba(175, 82, 222, 0.09);
   --accent: var(--blue);
   --hard: var(--blue);
-  --jev: var(--purple);
   --ok: var(--green);
   --warn: var(--orange);
   --bad: var(--red);
@@ -201,6 +200,9 @@ kbd {
   z-index: 5;
 }
 /* Windows：左边没有红绿灯，右上角是系统的最小化 / 最大化 / 关闭按钮（Window Controls Overlay，宽度从 env() 里取） */
+.platform-android .topbar {
+  padding-left: 14px;
+}
 .platform-win32 .topbar {
   padding-left: 14px;
   padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 10px);
@@ -284,13 +286,7 @@ kbd {
 }
 .pill.off::before {
   background: rgba(60, 60, 67, 0.25);
-}
-.pill.jev {
-  background: var(--purple-tint);
-  color: var(--purple);
-}
-.pill.jev::before,
-.pill.focus-pill::before,
+}.pill.focus-pill::before,
 .pill.dim-pill::before {
   display: none;
 }
@@ -332,6 +328,41 @@ kbd {
   display: grid;
   min-height: 0;
   height: 100%;
+}
+/* 平板竖屏：上下分屏 */
+.split.portrait {
+  grid-template-columns: minmax(0, 1fr);
+}
+.split.portrait .splitter {
+  cursor: row-resize;
+  touch-action: none;
+}
+.split.portrait .splitter::after {
+  top: 50%;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 0.5px;
+}
+.split.portrait .splitter:hover::after {
+  width: auto;
+  height: 2px;
+  margin-left: 0;
+  margin-top: -1px;
+}
+/* 竖屏下面只有三成高，放不下空状态的按键提示 */
+.split.portrait .chat-empty {
+  display: none;
+}
+/* 平板：双击要解释，别让系统把它当成选字 */
+.platform-android .left-body {
+  -webkit-touch-callout: none;
+  touch-action: pan-x pan-y;
+}
+/* 平板：手指够得着的分隔条 */
+.platform-android .splitter {
+  touch-action: none;
 }
 .left-wrap {
   min-width: 0;
@@ -750,51 +781,6 @@ kbd {
   max-width: 220px;
   outline: none;
 }
-/* Jev 开关：iOS 拨动开关 */
-.jev-toggle {
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  color: var(--fg2);
-  user-select: none;
-}
-.jev-toggle input {
-  appearance: none;
-  -webkit-appearance: none;
-  margin: 0;
-  width: 34px;
-  height: 20px;
-  border-radius: 99px;
-  background: rgba(120, 120, 128, 0.2);
-  position: relative;
-  cursor: pointer;
-  transition: background 0.25s;
-}
-.jev-toggle input::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.3, 1.2);
-}
-.jev-toggle input:checked {
-  background: var(--purple);
-}
-.jev-toggle input:checked::after {
-  transform: translateX(14px);
-}
-.jev-toggle.on {
-  color: var(--purple);
-}
 
 .msgs {
   flex: 1;
@@ -1056,11 +1042,7 @@ kbd {
   70% {
     box-shadow: 0 0 0 10px rgba(255, 59, 48, 0);
   }
-}
-
-/* ---------- Jev：不占对话区，判断记录收在顶栏药丸的弹层里；提醒出在眼睛正看着的那段上 ---------- */
-button.pill.jev,
-button.pill.focus-pill {
+}button.pill.focus-pill {
   border: none;
   font-family: inherit;
   cursor: pointer;
@@ -1074,95 +1056,6 @@ button.pill.focus-pill.hard:hover {
 }
 .side-right button.pill.focus-pill.hard:hover {
   background: rgba(255, 60, 40, 0.16);
-}
-button.pill.jev:hover {
-  background: rgba(175, 82, 222, 0.16);
-}
-/* 正在判断：药丸右上角一颗紫点在呼吸 */
-.pill.jev.busy::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--joy-purple);
-  animation: joyBreathe 1.2s ease-in-out infinite;
-}
-.jev-pop {
-  position: fixed;
-  top: 46px;
-  z-index: 60;
-  width: 360px;
-  max-height: 60vh;
-  overflow: auto;
-  padding: 12px 12px 8px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: saturate(180%) blur(24px);
-  border: 0.5px solid var(--sep);
-  box-shadow: var(--shadow-lg);
-  animation: guideIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-.jev-pop-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 0 4px 8px;
-}
-.jev-pop-head b {
-  font-size: 13.5px;
-  color: var(--purple);
-}
-.jev-pop-head span {
-  font-size: 11.5px;
-  color: var(--fg2);
-}
-.jev-pop ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.jev-pop li {
-  display: grid;
-  grid-template-columns: 56px 1fr auto;
-  gap: 8px;
-  align-items: baseline;
-  padding: 7px 4px;
-  border-top: 0.5px solid var(--sep);
-  font-size: 12.5px;
-}
-.jev-pop li .k {
-  color: var(--purple);
-  font-weight: 600;
-  font-size: 12px;
-}
-.jev-pop li .t {
-  color: var(--dim);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.jev-pop-empty {
-  margin: 0;
-  padding: 8px 4px 10px;
-  font-size: 12.5px;
-  color: var(--fg2);
-}
-/* 提问气泡下面：Jev 改了答法时的一句小字 */
-.jev-note {
-  font-size: 11.5px;
-  color: var(--purple);
-}
-/* 终端标签上的紫点：Qwen Code 在等你 */
-.tab-alert {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--joy-purple);
-  box-shadow: 0 0 0 2px rgba(180, 0, 230, 0.18);
-  animation: joyBreathe 1.6s ease-in-out infinite;
-  flex-shrink: 0;
 }
 
 /* ---------- 视线与焦点 ---------- */
@@ -1199,26 +1092,6 @@ button.pill.jev:hover {
 }
 .hl.hard.g-word {
   border-radius: 5px;
-}
-/* Jev 的小签：浮在眼睛正看着的那段上方，紫色，不挡鼠标 */
-.jev-hint {
-  position: fixed;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 11px 4px 6px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--joy-purple);
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: 0 0 0 1.5px rgba(180, 0, 230, 0.4), 0 6px 18px rgba(180, 0, 230, 0.18);
-  pointer-events: none;
-  animation: guideIn 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-.jev-hint.fact {
-  padding-left: 11px;
 }
 .hl-label {
   position: fixed;
@@ -1718,9 +1591,6 @@ button.pill.jev:hover {
 }
 .toast.error::before {
   background: var(--red);
-}
-.toast.jev::before {
-  background: var(--purple);
 }
 .toast .x {
   background: none;

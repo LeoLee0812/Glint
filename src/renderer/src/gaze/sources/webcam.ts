@@ -3,6 +3,7 @@ import { poseOf, rotationOf, rotFromMatrix, type FaceExpr, type HeadPos } from '
 import type { GazeFrame, SourceHooks } from '../types'
 import type { CamRotate } from '../../../../shared/types'
 import { head3dOf, type Head3D } from '../headmotion'
+import { openUvcStream } from '../../android/uvc'
 
 // 输入源一：Mac 摄像头（或连续互通相机）。摄像头 → MediaPipe 人脸 478 点 → RealEye 特征（关键点 + 表情系数 + 双眼小图）
 // 选了原深感时，拍大头照还会临时借用它（只要画面和人脸框，不算视线）
@@ -15,6 +16,8 @@ export interface CamOpts {
   matchName?: string
   rotate?: CamRotate
 }
+
+const IS_ANDROID = (window.lookask.platform as string) === 'android'
 
 const PROC_W = 1280
 const PROC_H = 720
@@ -33,6 +36,7 @@ export class WebcamSource {
   private tiny = document.createElement('canvas')
   private tinyCtx = this.tiny.getContext('2d', { willReadFrequently: true })!
   private frameCount = 0
+  private fpsCount = 0
   private fpsT0 = performance.now()
   private wantedCamera: string | undefined
   private wantedOpts: CamOpts = {}
@@ -40,6 +44,9 @@ export class WebcamSource {
   private raw: HTMLVideoElement | null = null
   private rotGen = 0
   private loading = false
+  private rebuilding = false
+  private startedAt = 0
+  private graphResets = 0
   private dark = false
   private loopGen = 0
   private lastProcessAt = 0
@@ -78,19 +85,14 @@ export class WebcamSource {
     this.loading = true
     this.hooks.status({ state: 'loading', error: undefined })
     try {
-      if (!this.detector) {
-        const base = new URL('./mediapipe/', window.location.href).href
-        this.detector = new FaceDetector({
-          modelPath: base + 'face_landmarker.task',
-          wasmPath: base.replace(/\/$/, ''),
-          mode: 'landmarker',
-          delegate: 'GPU',
-          runningMode: 'VIDEO'
-        })
-        await this.detector.initialize()
-      }
+      if (IS_ANDROID) await this.ensureWorker()
+      else if (!this.detector) await this.createDetector()
       const video: MediaTrackConstraints = { width: { ideal: PROC_W }, height: { ideal: PROC_H }, frameRate: { ideal: 30 } }
-      if (opts.match) {
+      // 平板的系统看不到 USB 摄像头，Glint Eye 由原生层直接读
+      const uvc = IS_ANDROID && !!opts.match
+      if (uvc) {
+        // 下面统一处理
+      } else if (opts.match) {
         // 按名字认设备（Glint Eye），没插就报错，不退回别的摄像头
         let cams = await this.listCameras().catch(() => [])
         // 没授权过摄像头时拿不到设备名，先开一下默认摄像头换来权限
@@ -107,12 +109,13 @@ export class WebcamSource {
         const cams = await this.listCameras().catch(() => [])
         if (cams.some((c) => c.id === cameraId)) video.deviceId = { exact: cameraId }
       }
-      this.stream = await navigator.mediaDevices.getUserMedia({ video, audio: false })
+      this.stream = uvc ? await openUvcStream() : await navigator.mediaDevices.getUserMedia({ video, audio: false })
       this.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         this.hooks.status({ state: 'error', error: '摄像头断开了', face: false })
         setTimeout(() => this.wantRunning && this.start(this.wantedCamera, this.wantedOpts), 1500)
       })
       const track = this.stream.getVideoTracks()[0]
+      this.startedAt = performance.now()
       this.video.srcObject = opts.rotate ? await this.rotated(this.stream, opts.rotate) : this.stream
       await this.video.play()
       const cams = await this.listCameras()
@@ -136,6 +139,10 @@ export class WebcamSource {
           : winCamError(e) || e?.message || String(e)
       })
       this.listCameras().catch(() => undefined)
+      // 平板的相机服务偶尔重启，那几秒里找不到摄像头：过一会自己再试
+      if (notFound && !e?.custom && (window.lookask.platform as string) === 'android') {
+        setTimeout(() => this.wantRunning && !this.running && this.start(this.wantedCamera, this.wantedOpts), 3000)
+      }
     } finally {
       this.loading = false
     }
@@ -166,6 +173,7 @@ export class WebcamSource {
         this.process()
       } catch (e) {
         console.warn('[gaze] 处理帧出错', e)
+        this.recoverGraph(e)
       }
       if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(next)
       else setTimeout(next, 33)
@@ -181,8 +189,49 @@ export class WebcamSource {
           this.video.play().catch(() => undefined)
           this.loop()
         }
+        // 平板：切到后台时系统收走摄像头，回来后流还在但只有 2×2 的空画面，永远没有新帧，只能重开
+        if (IS_ANDROID && !document.hidden && !this.loading && this.video.videoWidth <= 2 && performance.now() - this.startedAt > 3000) {
+          console.warn('[gaze] 摄像头画面没了，重开')
+          this.start(this.wantedCamera, this.wantedOpts)
+        }
       }, 1000)
     }
+  }
+
+  /**
+   * MediaPipe 的图只要出过一次错（实测平板上人脸几何解算偶尔失败），之后每一帧都会报同样的错，眼动就此哑掉；
+   * 只有重建检测器才能恢复。重建期间 process() 因 detector 为空直接跳过
+   */
+  private recoverGraph(e: unknown): void {
+    if (!/Graph has errors|CalculatorGraph/.test(String(e)) || !this.detector || this.rebuilding) return
+    this.rebuilding = true
+    const old = this.detector
+    this.detector = null
+    this.graphResets++
+    console.warn('[gaze] 重建人脸检测器，第', this.graphResets, '次')
+    try {
+      ;(old as unknown as { close?: () => void; dispose?: () => void }).close?.()
+    } catch {
+      /* 旧图已经坏了 */
+    }
+    this.createDetector()
+      .catch((err) => console.warn('[gaze] 重建失败', err))
+      .finally(() => {
+        this.rebuilding = false
+      })
+  }
+
+  private async createDetector(): Promise<void> {
+    const base = new URL('./mediapipe/', window.location.href).href
+    const d = new FaceDetector({
+      modelPath: base + 'face_landmarker.task',
+      wasmPath: base.replace(/\/$/, ''),
+      mode: 'landmarker',
+      delegate: 'GPU',
+      runningMode: 'VIDEO'
+    })
+    await d.initialize()
+    this.detector = d
   }
 
   /** 把摄像头画面顺时针转 deg 度，返回转好的流 */
@@ -225,7 +274,48 @@ export class WebcamSource {
     this.raw = null
   }
 
+  // ---------- 平板：检测放在 worker 里，主线程只管送帧、收结果 ----------
+
+  private worker: Worker | null = null
+  private workerReady: Promise<void> | null = null
+  private workerBusy = false
+
+  private ensureWorker(): Promise<void> {
+    if (this.workerReady) return this.workerReady
+    this.workerReady = new Promise((resolve, reject) => {
+      const w = new Worker(new URL('./faceWorker.ts', import.meta.url))
+      this.worker = w
+      w.onmessage = (e) => {
+        if ('ready' in e.data) {
+          if (e.data.ready) resolve()
+          else reject(new Error(e.data.error))
+          return
+        }
+        this.workerBusy = false
+        if (!this.running) return
+        const t = performance.now()
+        this.countFrame(t)
+        this.finish(t, e.data.det, e.data.features, e.data.vw, e.data.vh)
+      }
+      w.onerror = (e) => reject(new Error(e.message))
+      w.postMessage({ base: new URL('./mediapipe/', window.location.href).href })
+    })
+    return this.workerReady
+  }
+
+  private processInWorker(): void {
+    if (!this.worker || this.workerBusy || this.video.readyState < 2) return
+    this.workerBusy = true
+    this.checkDark(this.video)
+    createImageBitmap(this.video)
+      .then((bitmap) => this.worker!.postMessage({ bitmap }, [bitmap]))
+      .catch(() => {
+        this.workerBusy = false
+      })
+  }
+
   private process(): void {
+    if (IS_ANDROID) return this.processInWorker()
     if (!this.detector || this.video.readyState < 2) return
     const t = performance.now()
     const vw = this.video.videoWidth || PROC_W
@@ -237,12 +327,25 @@ export class WebcamSource {
     this.ctx.drawImage(this.video, 0, 0, vw, vh)
     const det = this.detector.detectWithLandmarks(this.canvas) as FaceLandmarkerResult | null
 
+    this.checkDark(this.canvas)
+    this.countFrame(t)
+    let features: Float64Array | null = null
+    if (det && det.allLandmarks?.length >= 478) {
+      const img = this.ctx.getImageData(0, 0, vw, vh)
+      features = Float64Array.from(
+        extractCombinedFeatures(img, det.boundingBox, det.keypoints, true, det.allLandmarks, vw, vh, 40, 20, det.blendshapes, det.headPose)
+      )
+    }
+    this.finish(t, det, features, vw, vh)
+  }
+
+  /** 每 20 帧看一眼画面亮度，全黑就提示用户（镜头被挡、iPhone 扣着、盖子合上） */
+  private checkDark(src: CanvasImageSource): void {
     this.frameCount++
-    // 每 20 帧看一眼画面亮度，全黑就提示用户（镜头被挡、iPhone 扣着、盖子合上）
     if (this.frameCount % 20 === 1) {
       this.tiny.width = 32
       this.tiny.height = 18
-      this.tinyCtx.drawImage(this.canvas, 0, 0, 32, 18)
+      this.tinyCtx.drawImage(src, 0, 0, 32, 18)
       const px = this.tinyCtx.getImageData(0, 0, 32, 18).data
       let sum = 0
       for (let i = 0; i < px.length; i += 4) sum += px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11
@@ -252,35 +355,26 @@ export class WebcamSource {
         this.hooks.status({ dark })
       }
     }
+  }
+
+  private countFrame(t: number): void {
+    this.fpsCount++
     if (t - this.fpsT0 > 1000) {
-      this.hooks.status({ fps: Math.round((this.frameCount * 1000) / (t - this.fpsT0)) })
-      this.frameCount = 0
+      this.hooks.status({ fps: Math.round((this.fpsCount * 1000) / (t - this.fpsT0)) })
+      this.fpsCount = 0
       this.fpsT0 = t
     }
+  }
 
-    let features: Float64Array | null = null
+  /** 检测结果 → 一帧视线数据（桌面、平板共用） */
+  private finish(t: number, det: FaceLandmarkerResult | null, features: Float64Array | null, vw: number, vh: number): void {
     let blink = 0
     let headZ: number | null = null
     let faceBox: GazeFrame['faceBox'] = null
     let pose: HeadPos | null = null
     let expr: FaceExpr | null = null
     let head3d: Head3D | null = null
-    if (det && det.allLandmarks?.length >= 478) {
-      const img = this.ctx.getImageData(0, 0, vw, vh)
-      const f = extractCombinedFeatures(
-        img,
-        det.boundingBox,
-        det.keypoints,
-        true,
-        det.allLandmarks,
-        vw,
-        vh,
-        40,
-        20,
-        det.blendshapes,
-        det.headPose
-      )
-      features = Float64Array.from(f)
+    if (det && features) {
       blink = Math.max(det.blendshapes?.eyeBlinkLeft ?? 0, det.blendshapes?.eyeBlinkRight ?? 0)
       headZ = det.headPose ? Math.abs(det.headPose.translationZ) : null
       faceBox = { x: det.boundingBox.x / vw, y: det.boundingBox.y / vh, w: det.boundingBox.width / vw, h: det.boundingBox.height / vh }

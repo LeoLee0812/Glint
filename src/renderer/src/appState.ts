@@ -60,7 +60,7 @@ export const uiStore = createStore<{
   side: Side
   showSettings: boolean
   /** 打开设置时直接跳到哪一页（比如发现 iPhone 待配对时跳到「眼动」，拍大头照发现没填 Key 时跳到「模型服务」） */
-  settingsTab: 'gaze' | 'providers' | 'jev' | null
+  settingsTab: 'gaze' | 'providers' | null
   showHelp: boolean
   showCalibration: boolean
   /** 拍大头照 / 生成小人的弹窗 */
@@ -92,7 +92,7 @@ export async function setUiMode(mode: UiMode): Promise<void> {
 export interface Toast {
   id: string
   text: string
-  kind: 'info' | 'ok' | 'warn' | 'error' | 'jev'
+  kind: 'info' | 'ok' | 'warn' | 'error'
   action?: { label: string; run: () => void }
   ttl: number
 }

@@ -24,8 +24,7 @@ function push(): void {
     joyR: j.R.connected || j.P.connected,
     joyRestL: j.L.connected ? j.L.resting : j.P.connected && j.P.resting,
     joyRestR: j.R.connected ? j.R.resting : j.P.connected && j.P.resting,
-    side: uiStore.get().side,
-    jev: !!s?.jevMode
+    side: uiStore.get().side
   }
   // 状态源里 fps 之类每秒都在变，只在菜单要显示的内容变了时才推
   const key = JSON.stringify(st)
@@ -60,12 +59,6 @@ async function run(c: TrayCommand): Promise<void> {
       return newTerminal()
     case 'side':
       return switchSide(c.side)
-    case 'jev': {
-      const next = !s?.jevMode
-      await updateSettings((x) => ({ ...x, jevMode: next }))
-      toast(next ? 'Jev 开了' : 'Jev 关了', 'jev')
-      return
-    }
     case 'settings':
       return uiStore.patch({ showSettings: true })
     case 'help':

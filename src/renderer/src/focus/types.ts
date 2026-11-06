@@ -18,7 +18,7 @@ export interface Selection {
   space: 'client'
   text: string
   gran: Granularity
-  /** 所在块的稳定标识，给 Jev 统计停留和回看 */
+  /** 所在块的稳定标识 */
   blockKey?: string
   /** 显示用的粒度名，覆盖「词 / 句 / 段 / 节」（扫描页按版面切出来的是 行 / 段 / 图表 / 公式 / 栏） */
   unit?: string

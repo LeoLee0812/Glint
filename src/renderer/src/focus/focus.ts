@@ -105,14 +105,6 @@ export interface FocusState {
   at: number
 }
 
-export interface BlockDwell {
-  paneId: string
-  blockKey: string
-  text: string
-  dwellMs: number
-  visits: number
-  lastSeen: number
-}
 
 class PaneRegistry {
   private map = new Map<string, PaneAdapter>()
@@ -145,13 +137,11 @@ class FocusController {
     const unit = loadUnit()
     return { mode: 'none', gran: unit, unit, paneId: null, sel: null, label: '', at: 0 }
   })())
-  events = new Emitter<{ dwell: BlockDwell; changed: FocusState }>()
+  events = new Emitter<{ changed: FocusState }>()
 
   private anchor: Anchor | null = null
   private pane: PaneAdapter | null = null
   private awayFix: { fix: Fixation; since: number } | null = null
-  private dwell = new Map<string, BlockDwell>()
-  private currentBlock: string | null = null
   private lastFixUpdate = 0
   /** 切到另一侧前记下这一侧的焦点，切回来时还原 */
   private memory: Record<Side, { pane: PaneAdapter; anchor: Anchor; mode: 'soft' | 'hard'; gran: Granularity } | null> = {
@@ -221,7 +211,6 @@ class FocusController {
     }
     // 眼动抖到段外一点点不跳段（鼠标是精确指向，不做这个）
     if (f.id > 0 && this.holdsSoft(p)) {
-      this.trackDwell(f)
       return
     }
     let pane = panes.at(p.x, p.y)
@@ -237,7 +226,6 @@ class FocusController {
     this.pane = pane
     this.anchor = a
     this.update('soft')
-    this.trackDwell(f)
   }
 
   /** 光环正吸着的词（刚更新过、吸得够牢）在哪个视图的哪个位置；只有「词」粒度才吸 */
@@ -312,32 +300,6 @@ class FocusController {
     return null
   }
 
-  /** 统计每个段落的停留时长和回看次数（给 Jev 判断读者是不是卡住了）；粒度是词 / 句时也按所在的整段算 */
-  private trackDwell(f: Fixation): void {
-    const sel = this.state.get().sel
-    // 扫描页的块没有原文，Jev 没法判断难度
-    if (!sel?.blockKey || sel.visual || !this.pane || !this.anchor) return
-    const text = sel.gran === 'paragraph' ? sel.text : (this.pane.select(this.anchor, 'paragraph')?.text ?? sel.text)
-    const key = `${this.pane.id}:${sel.blockKey}`
-    const now = Date.now()
-    let d = this.dwell.get(key)
-    if (!d) {
-      d = { paneId: this.pane.id, blockKey: sel.blockKey, text, dwellMs: 0, visits: 0, lastSeen: 0 }
-      this.dwell.set(key, d)
-    }
-    if (this.currentBlock !== key) {
-      d.visits++
-      this.currentBlock = key
-    }
-    d.dwellMs += Math.min(f.duration, 600)
-    d.lastSeen = now
-    d.text = text
-    this.events.emit('dwell', { ...d })
-    if (this.dwell.size > 400) {
-      const oldest = [...this.dwell.entries()].sort((a, b) => a[1].lastSeen - b[1].lastSeen)[0]
-      this.dwell.delete(oldest[0])
-    }
-  }
 
   // ---------- 摇杆 / 按键驱动 ----------
 
@@ -492,7 +454,7 @@ class FocusController {
     return p ? panes.at(p.x, p.y) : null
   }
 
-  /** 焦点所在的那一整段的框（窗口坐标）：选的是词 / 句时，Jev 的小签照样贴着整段放 */
+  /** 焦点所在的那一整段的框（窗口坐标） */
   blockBox(): Box | null {
     if (!this.pane || !this.anchor) return null
     const sel = this.pane.select(this.anchor, 'paragraph')
@@ -548,7 +510,7 @@ class FocusController {
 
   // ---------- 取上下文 ----------
 
-  /** 当前焦点的提问上下文；gran 传了就按它取（Jev 说「卡住了」按 A 时要整段，不管现在选的是词还是句） */
+  /** 当前焦点的提问上下文；gran 传了就按它取 */
   async context(opts: { withImage?: boolean; gran?: Granularity } = {}): Promise<FocusContext | null> {
     if (!this.pane || !this.anchor) this.snapToGaze(false)
     if (!this.pane || !this.anchor) return null
@@ -583,9 +545,6 @@ class FocusController {
     return st.mode === 'soft' && performance.now() - st.at < maxAgeMs
   }
 
-  dwellStats(): BlockDwell[] {
-    return [...this.dwell.values()]
-  }
 }
 
 /** 眼动能用：已校准、摄像头在跑、看得到脸 */

@@ -21,17 +21,6 @@ export interface ModelRef {
   model: string
 }
 
-export interface JevConfig {
-  /** 网关地址：默认阿里云百炼决策模型（地址里的 {WorkspaceId} 换成业务空间 ID），也可以换 TypeSafe 直连 / 博查 / OpenRouter 等，协议都是 systemone */
-  baseUrl: string
-  /** 留空 = 百炼地址时借用千问服务商的 Key */
-  apiKey: string
-  model: string
-  /** 百炼业务空间 ID（ws-xxx），只有百炼地址要；千问服务商用的是业务空间专属域名时可以不填 */
-  workspaceId: string
-  /** 每天最多用多少输入 token，超了自动停 */
-  dailyTokenCap: number
-}
 
 /** 眼动输入源：Mac 摄像头（平面画面）、Glint Eye 外置红外摄像头（平面画面，自动认设备）或 iPhone 原深感（三维头姿 + 双眼朝向） */
 export type GazeSourceKind = 'webcam' | 'glinteye' | 'truedepth'
@@ -48,6 +37,8 @@ export type TdMount = 'bottom' | 'top' | 'free'
 export interface GazeConfig {
   /** 眼动输入源 */
   source: GazeSourceKind
+  /** 插上 Glint Eye 自动切过去之前用的输入源，拔掉时切回来 */
+  sourceBeforeGlint?: GazeSourceKind
   /** iPhone 原深感的摆放位置 */
   tdMount: TdMount
   cameraId: string
@@ -79,12 +70,12 @@ export interface Settings {
   fastModel: ModelRef
   visionModel: ModelRef
   avatar: AvatarConfig
-  jev: JevConfig
-  jevMode: boolean
   gaze: GazeConfig
   terminal: { cwd: string; shell: string }
   systemPrompt: string
   leftRatio: number
+  /** 平板竖屏：上面阅读区占的比例 */
+  topRatio?: number
   /** 装好后的首次引导（第一步拍大头照）走过了没有，只弹一次 */
   onboarded: boolean
 }
@@ -120,41 +111,6 @@ export interface LlmDone {
   error?: string
   usage?: { input?: number; output?: number }
   ms: number
-}
-
-// ---------- Jev ----------
-
-export type JevQuestion =
-  | { type: 'choice'; instructions: string; criteria: Record<string, string> }
-  | { type: 'score'; instructions: string; criteria: string[] }
-  | { type: 'noul'; instructions: string }
-
-export interface JevAnswer {
-  type: 'choice' | 'score' | 'noul'
-  choice?: string
-  probabilities?: Record<string, number>
-  score?: number
-  legend?: Record<string, string>
-  noul?: number
-  confidence?: number
-}
-
-export interface JevResult {
-  ok: boolean
-  answers: Record<string, JevAnswer>
-  model?: string
-  inputTokens: number
-  cached: boolean
-  ms: number
-  error?: string
-}
-
-export interface JevUsage {
-  day: string
-  inputTokens: number
-  calls: number
-  cacheHits: number
-  totalTokens: number
 }
 
 // ---------- 原生助手事件 ----------
@@ -274,7 +230,6 @@ export interface TrayStatus {
   joyRestL: boolean
   joyRestR: boolean
   side: 'left' | 'right'
-  jev: boolean
 }
 
 /** 菜单栏菜单点了什么，主进程转给渲染进程执行 */
@@ -285,7 +240,6 @@ export type TrayCommand =
   | { cmd: 'open' }
   | { cmd: 'terminal' }
   | { cmd: 'side'; side: 'left' | 'right' }
-  | { cmd: 'jev' }
   | { cmd: 'settings' }
   | { cmd: 'help' }
   /** 找手柄：让两只手柄「哔哔」响几秒 */

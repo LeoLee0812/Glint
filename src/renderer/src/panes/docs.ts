@@ -1,6 +1,7 @@
 import { createStore, uid } from '../store'
 import { la, toast } from '../appState'
 import { WELCOME_MD } from './welcome'
+import { isAndroid, isMac } from '../platform'
 
 // 左侧标签页：每个标签是一份「文档」——Markdown、PDF 或终端
 
@@ -17,10 +18,23 @@ export interface Doc {
 
 const initial: Doc[] = [
   { id: 'welcome', kind: 'md', title: '使用说明', text: WELCOME_MD },
-  { id: 'term1', kind: 'terminal', title: '终端' }
+  // 平板上跑不了本地终端
+  ...(isAndroid ? [] : [{ id: 'term1', kind: 'terminal' as const, title: '终端' }])
 ]
 
 export const docsStore = createStore<{ docs: Doc[]; active: string }>({ docs: initial, active: 'welcome' })
+
+// Windows 和平板带一篇中文为主、夹着英文术语的演示论文，读到不会的词可以直接问；Mac 不带
+if (!isMac) {
+  fetch(new URL('./docs/demo-transformer-zh.pdf', window.location.href).href)
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .then((buf) => {
+      if (!buf) return
+      const paper: Doc = { id: 'paper', kind: 'pdf', title: '论文', data: new Uint8Array(buf) }
+      docsStore.set((s) => ({ ...s, docs: [...s.docs, paper] }))
+    })
+    .catch(() => undefined)
+}
 
 export function openDoc(doc: Omit<Doc, 'id'> & { id?: string }): string {
   const id = doc.id || uid('doc')

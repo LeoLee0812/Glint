@@ -1,6 +1,6 @@
 import type { GazeSourceKind } from '../../../shared/types'
 import { createStore, Emitter } from '../store'
-import { boundsStore, settingsStore } from '../appState'
+import { boundsStore, settingsStore, updateSettings } from '../appState'
 import { OneEuro2D, FixationDetector, type Fixation } from './filters'
 import { predictRidge, type RidgeModel, type FitInput } from './ridge'
 import { lerpPose, type FaceExpr, type HeadPos } from './pose'
@@ -84,6 +84,19 @@ class GazeEngine {
   private exprEma: FaceExpr | null = null
 
   constructor() {
+    navigator.mediaDevices?.addEventListener('devicechange', () => {
+      // 等系统把设备列表更新完
+      setTimeout(() => this.syncGlintEye(true), 600)
+    })
+    // 平板转方向：换上这个方向的校准
+    if ((window.lookask.platform as string) === 'android') {
+      window.matchMedia('(orientation: portrait)').addEventListener('change', () => {
+        if (this.kind !== 'truedepth') {
+          this.loadRidge()
+          this.applyModelStatus()
+        }
+      })
+    }
     this.webcam = new WebcamSource({
       frame: (f) => this.ingest(this.kind === 'truedepth' ? 'webcam' : this.kind, f),
       status: (p) => {
@@ -140,6 +153,7 @@ class GazeEngine {
 
   /** 按设置里选的输入源启动（摄像头的话用 cameraId） */
   async start(cameraId?: string): Promise<void> {
+    if (this.glintConnected === null) await this.syncGlintEye(false)
     const g = settingsStore.get().s?.gaze
     const want: GazeSourceKind = g?.source === 'truedepth' || g?.source === 'glinteye' ? g.source : 'webcam'
     this.setSource(want)
@@ -148,6 +162,55 @@ class GazeEngine {
       await this.td.refreshDisplay()
     } else if (want === 'glinteye') await this.webcam.start(undefined, { match: GLINT_EYE_LABEL, matchName: 'Glint Eye', rotate: g?.glintRotate ?? 90 })
     else await this.webcam.start(cameraId)
+    // 第一次授权摄像头之前读不到设备名，开起来之后再认一次
+    void this.syncGlintEye(true)
+  }
+
+  // ---------- Glint Eye 优先：插上就切过去并弹窗，拔掉切回原来的输入源 ----------
+
+  private glintConnected: boolean | null = null
+  private glintSyncing = false
+
+  private async detectGlintEye(): Promise<boolean> {
+    const la = window.lookask as unknown as { platform: string; uvc?: { present: () => boolean } }
+    // 平板的系统看不到 USB 摄像头，问原生层
+    if (la.platform === 'android') return !!la.uvc?.present()
+    const devs = await navigator.mediaDevices.enumerateDevices()
+    return devs.some((d) => d.kind === 'videoinput' && GLINT_EYE_LABEL.test(d.label))
+  }
+
+  /** 只在连接状态变化时动作：用户插着 Glint Eye 又在设置里手动选了别的，不会被改回去。restart：切完要不要重新开摄像头 */
+  private async syncGlintEye(restart: boolean): Promise<void> {
+    if (this.glintSyncing) return
+    this.glintSyncing = true
+    try {
+      const now = await this.detectGlintEye().catch(() => false)
+      const was = this.glintConnected
+      if (now === was) return
+      this.glintConnected = now
+      const s = settingsStore.get().s
+      if (!s) {
+        this.glintConnected = was
+        return
+      }
+      let next: GazeSourceKind | null = null
+      if (now) {
+        window.lookask.win.island('Glint Eye 已连接', true)
+        if (s.gaze.source !== 'glinteye') next = 'glinteye'
+      } else {
+        if (was) window.lookask.win.island('Glint Eye 已断开', false)
+        if (s.gaze.source === 'glinteye') next = s.gaze.sourceBeforeGlint && s.gaze.sourceBeforeGlint !== 'glinteye' ? s.gaze.sourceBeforeGlint : 'webcam'
+      }
+      if (!next) return
+      const target = next
+      await updateSettings((x) => ({
+        ...x,
+        gaze: { ...x.gaze, source: target, sourceBeforeGlint: target === 'glinteye' ? x.gaze.source : x.gaze.sourceBeforeGlint }
+      }))
+      if (restart) setTimeout(() => this.start(settingsStore.get().s?.gaze.cameraId || undefined), 0)
+    } finally {
+      this.glintSyncing = false
+    }
   }
 
   stop(): void {
@@ -316,7 +379,9 @@ class GazeEngine {
 
   /** 当前摄像头类输入源的岭回归模型存在哪 */
   private get ridgeKey(): string {
-    return this.kind === 'glinteye' ? GLINT_MODEL_KEY : MODEL_KEY
+    const base = this.kind === 'glinteye' ? GLINT_MODEL_KEY : MODEL_KEY
+    // 平板转了方向，摄像头和屏幕的相对位置就变了：横屏、竖屏各存一份校准
+    return (window.lookask.platform as string) === 'android' && window.matchMedia('(orientation: portrait)').matches ? `${base}.portrait` : base
   }
 
   private loadModels(): void {

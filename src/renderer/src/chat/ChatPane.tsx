@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { LOCAL_TRANSLATE_MODEL } from '../../../shared/defaults'
 import { useStore } from '../store'
 import { chatStore, ask, abort, clearChat, removeMsg, exportChat, popFork, closeFork, type ChatMsg, type ForkCard } from './chatStore'
 import { renderMarkdown, renderStreaming } from './markdown'
@@ -8,7 +9,6 @@ import { GRAN_LABEL, unionBox } from '../focus/types'
 import { settingsStore, updateSettings, la, toast, uiStore } from '../appState'
 import { openDoc } from '../panes/docs'
 import { Icon } from '../ui/Icon'
-import { jevMissing } from '../../../shared/jev'
 
 // 右侧对话区：焦点卡片 + 快捷动作 + 流式回答；回答本身也能被眼睛「看中」再追问
 // 右侧模式（右手柄 +）下追问回答里的某一处，解释不塞进主对话，而是在下面裂变出一个解释窗口，可以一层层往下问
@@ -24,7 +24,7 @@ function refOf(attr: 'mid' | 'card') {
 function ModelPicker(): React.JSX.Element | null {
   const s = useStore(settingsStore).s
   if (!s) return null
-  const opts = s.providers.filter((p) => p.apiKey).flatMap((p) => p.models.map((m) => ({ v: `${p.id}::${m}`, label: `${p.name.split(' ')[0]} · ${m}` })))
+  const opts = s.providers.filter((p) => p.apiKey).flatMap((p) => p.models.filter((m) => m !== LOCAL_TRANSLATE_MODEL).map((m) => ({ v: `${p.id}::${m}`, label: `${p.name.split(' ')[0]} · ${m}` })))
   const cur = `${s.chatModel.providerId}::${s.chatModel.model}`
   return (
     <select
@@ -86,7 +86,6 @@ function UserMsg({ m }: { m: ChatMsg }): React.JSX.Element {
         </div>
       )}
       {m.image && <img className="ctx-img" src={m.image} alt="焦点截图" />}
-      {m.jevNote && <div className="jev-note">Jev · {m.jevNote}</div>}
     </div>
   )
 }
@@ -296,28 +295,10 @@ export function ChatPane(): React.JSX.Element {
     ask(prevUser.action || 'ask', { question: prevUser.action === 'ask' ? prevUser.text : undefined, ctx: prevUser.ctx, target: 'main' })
   }
 
-  const jevOn = !!s?.jevMode
-
   return (
     <section className="right">
       <header className="chat-head">
         <ModelPicker />
-        <label className={`jev-toggle ${jevOn ? 'on' : ''}`} title="百炼决策模型判断你卡没卡住、怎么答；长按右手柄 + 也能开关">
-          <input
-            type="checkbox"
-            checked={jevOn}
-            onChange={(e) => {
-              const missing = s ? jevMissing(s) : ''
-              if (e.target.checked && missing) {
-                toast(`先在设置里补上：${missing.replace(/^还没填/, '')}`, 'warn')
-                uiStore.patch({ showSettings: true, settingsTab: 'jev' })
-                return
-              }
-              updateSettings((x) => ({ ...x, jevMode: e.target.checked }))
-            }}
-          />
-          Jev 模式
-        </label>
         <span className="grow" />
         <button
           className="btn sm ghost"

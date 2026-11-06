@@ -5,7 +5,7 @@ import { MarkdownPane } from './MarkdownPane'
 import { PdfPane } from './PdfPane'
 import { TerminalPane } from './TerminalPane'
 import { Icon, type IconName } from '../ui/Icon'
-import { termAlertStore, clearTermAlert } from '../jev/jevBrain'
+import { isAndroid } from '../platform'
 
 // 左侧：标签页 + 拖放打开文件
 
@@ -24,7 +24,6 @@ function Pane({ doc, active }: { doc: Doc; active: boolean }): React.JSX.Element
 
 export function LeftPane(): React.JSX.Element {
   const { docs, active } = useStore(docsStore)
-  const alert = useStore(termAlertStore)
   const [drag, setDrag] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
@@ -51,7 +50,6 @@ export function LeftPane(): React.JSX.Element {
             className={`tab ${d.id === active ? 'on' : ''}`}
             onClick={() => {
               activate(d.id)
-              if (alert.docId === d.id) clearTermAlert()
             }}
             title={d.path || d.title}
           >
@@ -59,8 +57,6 @@ export function LeftPane(): React.JSX.Element {
               <Icon name={ICON[d.kind]} />
             </span>
             <span className="tab-title">{d.title}</span>
-            {/* 终端里的 Qwen Code 在等你批准 / 回答：标签上挂个紫点 */}
-            {alert.docId === d.id && <i className="tab-alert" title={alert.state === 'asking_user' ? '在问你' : alert.state === 'stuck' ? '好像卡住了' : '在等你批准'} />}
             {d.id !== 'welcome' && (
               <button
                 className="tab-x"
@@ -95,14 +91,16 @@ export function LeftPane(): React.JSX.Element {
               >
                 打开文件…
               </button>
-              <button
-                onClick={() => {
-                  setMenu(null)
-                  newTerminal()
-                }}
-              >
-                新终端
-              </button>
+              {!isAndroid && (
+                <button
+                  onClick={() => {
+                    setMenu(null)
+                    newTerminal()
+                  }}
+                >
+                  新终端
+                </button>
+              )}
             </div>
           )}
         </div>

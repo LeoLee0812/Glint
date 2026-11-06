@@ -3,52 +3,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'n
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Settings, Provider } from '../shared/types'
-import { defaultShell, isMac } from './platform'
-import { BAILIAN_JEV_MODEL, BAILIAN_JEV_URL } from '../shared/jev'
+import { defaultShell, isMac, isWin } from './platform'
+import { AVATAR_MODEL, LOCAL_MODEL, LOCAL_TRANSLATE_MODEL, baseSettings } from '../shared/defaults'
+
+export { AVATAR_MODEL }
 
 // 设置存在 ~/Library/Application Support/LookAsk/settings.json（Windows 是 %APPDATA%\LookAsk\settings.json；权限 600，只有本人可读）
 // Key 只存本机，不进仓库
-
-const AGENT_LINE = '- 如果焦点内容来自终端里的 Qwen Code（或别的编程智能体），把它当作编程协作场景来解释'
-
-const DEFAULT_SYSTEM_PROMPT = `你是 Glint 瞳问的阅读副驾。用户用眼动追踪 + Joy-Con 手柄指向了屏幕上的内容，「当前焦点」就是用户此刻正在看的东西。
-回答规则：
-- 先给一句话结论，再按需展开；默认简短，用户追问再深入
-- 默认用简体中文；专业术语第一次出现时附英文原词
-- 公式用 LaTeX（行内 $...$，独立 $$...$$），代码用代码块
-- 焦点只是线索：结合周边上下文理解，不要逐字复述原文
-${AGENT_LINE}`
-
-/** 本地小模型：Ollama 里的千问 3.5 4B（3.4GB，能看图）；装法见 scripts/setup-local-model.sh */
-const LOCAL_MODEL = 'qwen3.5:4b'
-
-const DEFAULT_PROVIDERS: Provider[] = [
-  {
-    id: 'qwen',
-    name: '千问 · 阿里云百炼',
-    kind: 'openai',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    apiKey: '',
-    models: ['qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-plus', 'qwen3-vl-plus', 'qwen3-vl-flash'],
-    // Qwen3 系列默认会先思考，关掉才能秒回
-    extraBody: { enable_thinking: false },
-    console: 'https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key'
-  },
-  {
-    id: 'ollama',
-    name: '本地千问 · Ollama',
-    kind: 'openai',
-    // 写 127.0.0.1 不写 localhost：Ollama 只听 IPv4，localhost 会先试 IPv6
-    baseUrl: 'http://127.0.0.1:11434/v1',
-    apiKey: 'ollama',
-    models: [LOCAL_MODEL],
-    // 本地千问默认先「思考」上千字才回答，关掉才能秒回
-    extraBody: { reasoning_effort: 'none' }
-  }
-]
-
-/** 实时小人默认用的百炼图像编辑模型：实测一张 15 秒左右，头发、眼镜这些特征保留得最像 */
-export const AVATAR_MODEL = 'qwen-image-3.0-pro'
 
 // 2026-09 起只用千问（云端百炼 + 本地 Ollama）：老设置里的中转站（OpenLux / 云雾）和其它几家内置服务商都删掉，
 // 用到它们的地方换回千问；删之前连同 Key 备份到 removed-providers.json，Key 不会丢。自己添加的服务商不动
@@ -72,10 +33,10 @@ function backupRemoved(list: Provider[]): void {
   chmodSync(p, 0o600)
 }
 
-/** 换掉的 Jev 配置（含 Key）追加进 userData/removed-jev.json（权限 600） */
-function backupJev(j: Settings['jev']): void {
+/** Jev 模式已下线：老设置里的 Jev 配置（含 Key）追加进 userData/removed-jev.json（权限 600），不丢 Key */
+function backupJev(j: unknown): void {
   const p = join(dataDir(), 'removed-jev.json')
-  let old: Array<Settings['jev']> = []
+  let old: unknown[] = []
   try {
     old = JSON.parse(readFileSync(p, 'utf8'))
   } catch {
@@ -83,19 +44,6 @@ function backupJev(j: Settings['jev']): void {
   }
   writeFileSync(p, JSON.stringify([...old, j], null, 2), 'utf8')
   chmodSync(p, 0o600)
-}
-
-/**
- * 2026-10 起 Jev 默认换成百炼决策模型：没有 workspaceId 字段的老设置（在那之前存的）只要还停在 TypeSafe 直连，
- * 就整组换成百炼，原来的 Jev Key 备份到 removed-jev.json；之后用户自己再选回 TypeSafe 不会被改掉
- */
-function migrateJev(raw: Partial<Settings['jev']> | undefined, def: Settings['jev']): Settings['jev'] {
-  const j = { ...def, ...(raw || {}) }
-  if (raw && !('workspaceId' in raw) && /api\.typesafe\.ai/.test(j.baseUrl)) {
-    if (j.apiKey) backupJev(j)
-    return { ...def }
-  }
-  return j
 }
 
 /** 老设置迁移：删不用的服务商、补上千问、补官网链接；返回有没有改动 */
@@ -130,6 +78,7 @@ function migrate(s: Settings, def: Settings): boolean {
     changed = true
   }
   s.providers = kept
+  if (isWin && useLocalTranslate(s)) changed = true
   const alive = (id: string) => kept.some((p) => p.id === id)
   for (const k of ['chatModel', 'fastModel', 'visionModel'] as const) {
     if (!alive(s[k].providerId)) {
@@ -149,30 +98,19 @@ function migrate(s: Settings, def: Settings): boolean {
   return changed
 }
 
-export const JEV_PRESETS = [
-  { name: '阿里云百炼 · 决策模型（默认，Key 和千问共用）', baseUrl: BAILIAN_JEV_URL, model: BAILIAN_JEV_MODEL },
-  { name: 'TypeSafe 官方直连', baseUrl: 'https://api.typesafe.ai', model: 'jev-latest' },
-  { name: '博查 Jev（限时免费）', baseUrl: 'https://jev.bocha.cn', model: 'bocha-jev-v1' },
-  { name: 'OpenCode Zen', baseUrl: 'https://opencode.ai/zen', model: 'jev-1.13' },
-  { name: 'Vercel AI Gateway', baseUrl: 'https://ai-gateway.vercel.sh/v1/evaluate', model: 'typesafe-ai/jev' },
-  { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' }
-]
+/** Windows 翻译默认走本地模型；只切还是默认云端模型的，本地没开时 chatStore 会退回云端 */
+function useLocalTranslate(s: Settings): boolean {
+  const local = s.providers.find((p) => p.id === 'ollama')
+  if (!local || local.models.includes(LOCAL_TRANSLATE_MODEL)) return false
+  local.models.push(LOCAL_TRANSLATE_MODEL)
+  if (s.fastModel.providerId === 'qwen' && s.fastModel.model === 'qwen3.8-flash') s.fastModel = { providerId: 'ollama', model: LOCAL_TRANSLATE_MODEL }
+  return true
+}
 
 export function defaultSettings(): Settings {
-  return {
-    providers: DEFAULT_PROVIDERS.map((p) => ({ ...p, models: [...p.models] })),
-    chatModel: { providerId: 'qwen', model: 'qwen3.8-max' },
-    fastModel: { providerId: 'qwen', model: 'qwen3.8-flash' },
-    visionModel: { providerId: 'qwen', model: 'qwen3.8-max' },
-    avatar: { providerId: 'qwen', model: AVATAR_MODEL, show: true },
-    jev: { baseUrl: BAILIAN_JEV_URL, apiKey: '', model: BAILIAN_JEV_MODEL, workspaceId: '', dailyTokenCap: 300000 },
-    jevMode: false,
-    gaze: { source: 'webcam', tdMount: 'bottom', cameraId: '', glintRotate: 90, calibrationPoints: 17, showCursor: true, autoScroll: true, smoothing: 0.5, magnet: 0.7, headComp: true },
-    terminal: { cwd: homedir(), shell: defaultShell() },
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
-    leftRatio: 0.62,
-    onboarded: false
-  }
+  const s = baseSettings({ cwd: homedir(), shell: defaultShell() })
+  if (isWin) useLocalTranslate(s)
+  return s
 }
 
 function dataDir(): string {
@@ -195,19 +133,20 @@ export function loadSettings(): Settings {
   const p = settingsPath()
   if (existsSync(p)) {
     try {
-      const raw = JSON.parse(readFileSync(p, 'utf8')) as Partial<Settings>
+      const raw = JSON.parse(readFileSync(p, 'utf8')) as Partial<Settings> & { jev?: unknown; jevMode?: unknown }
+      const hadJev = 'jev' in raw || 'jevMode' in raw
+      if (raw.jev) backupJev(raw.jev)
+      delete raw.jev
+      delete raw.jevMode
       s = {
         ...def,
         ...raw,
-        jev: migrateJev(raw.jev, def.jev),
         avatar: { ...def.avatar, ...(raw.avatar || {}) },
         gaze: { ...def.gaze, ...(raw.gaze || {}) },
         terminal: { ...def.terminal, ...(raw.terminal || {}) },
         providers: raw.providers?.length ? raw.providers : def.providers
       }
-      // 老设置没有 jev.workspaceId，补上后存一次，免得每次启动都重新迁移
-      const jevOld = !!raw.jev && !('workspaceId' in raw.jev)
-      if (migrate(s, def) || jevOld) saveSettings(s)
+      if (migrate(s, def) || hadJev) saveSettings(s)
     } catch (e) {
       console.error('[settings] 读取失败，用默认值', e)
     }

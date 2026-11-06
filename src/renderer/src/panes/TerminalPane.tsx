@@ -5,7 +5,6 @@ import '@xterm/xterm/css/xterm.css'
 import { la, settingsStore, toast, uiStore } from '../appState'
 import { panes } from '../focus/focus'
 import { createTerminalAdapter } from '../focus/terminalAdapter'
-import { judgeTerminal } from '../jev/jevBrain'
 import { AGENT, installCommand, QWEN_NOT_FOUND } from './agent'
 import type { Doc } from './docs'
 import { isMac } from '../platform'
@@ -107,9 +106,6 @@ export function TerminalPane({ doc, active }: { doc: Doc; active: boolean }): Re
         la.pty.onData((p) => {
           if (p.id !== id) return
           term.write(p.data)
-          // 输出停下来 1.5 秒后，让 Jev 看一眼 Qwen Code 是不是在等你拍板
-          if (settleTimer) clearTimeout(settleTimer)
-          settleTimer = setTimeout(() => judgeTerminal(() => screenOf(term), doc.id), 1500)
         })
       )
       offs.push(

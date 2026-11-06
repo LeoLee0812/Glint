@@ -442,6 +442,7 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
     focus.refresh()
   }, [])
 
+  const renderLatest = useRef<((num: number) => Promise<void>) | null>(null)
   const renderPage = useCallback(
     async (num: number) => {
       if (!pdf) return
@@ -477,10 +478,13 @@ export function PdfPane({ doc, active }: { doc: Doc; active: boolean }): React.J
         console.warn('[pdf] 渲染失败', num, e)
       } finally {
         renderingRef.current.delete(num)
+        // 渲染途中窗口宽度变了（转屏、拖分隔条）：这一页按旧宽度画的，画布和文字层对不上，点哪都偏。按新宽度再画一次
+        renderLatest.current?.(num)
       }
     },
     [pdf, sizes, scaleOf, scanPage]
   )
+  renderLatest.current = renderPage
 
   // 只渲染可视区附近的页
   useEffect(() => {

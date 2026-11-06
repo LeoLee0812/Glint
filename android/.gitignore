@@ -1,0 +1,8 @@
+.gradle/
+build/
+app/build/
+local.properties
+keystore.properties
+*.jks
+# 渲染进程的构建产物，npm run build:android 生成
+app/src/main/assets/www/

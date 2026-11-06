@@ -15,17 +15,39 @@ import { PhotoBooth } from './ui/PhotoBooth'
 import { Guide } from './ui/Guide'
 import { loadAvatar } from './avatar/avatar'
 import { startOnboarding } from './onboarding'
+import { isAndroid } from './platform'
+
+/** 平板竖屏：阅读内容在上、AI 在下，默认 7:3 */
+const PORTRAIT_RATIO = 0.7
+const portraitQuery = window.matchMedia('(orientation: portrait)')
+
+function usePortrait(): boolean {
+  const [portrait, setPortrait] = useState(isAndroid && portraitQuery.matches)
+  useEffect(() => {
+    if (!isAndroid) return
+    const on = () => setPortrait(portraitQuery.matches)
+    portraitQuery.addEventListener('change', on)
+    return () => portraitQuery.removeEventListener('change', on)
+  }, [])
+  return portrait
+}
 
 export default function App(): React.JSX.Element {
   const ui = useStore(uiStore)
   const s = useStore(settingsStore).s
-  const [ratio, setRatio] = useState(0.62)
+  const portrait = usePortrait()
+  const [landRatio, setLandRatio] = useState(0.62)
+  const [portRatio, setPortRatio] = useState(PORTRAIT_RATIO)
+  const ratio = portrait ? portRatio : landRatio
   const dragging = useRef(false)
+  const portraitRef = useRef(portrait)
+  portraitRef.current = portrait
 
   useEffect(() => {
     // 小人和设置都读完再决定要不要走新手引导（已经校准过、生成过小人的老用户不弹）
     Promise.all([loadAvatar().catch(() => undefined), loadSettingsIntoStore()]).then(([, st]) => {
-      setRatio(st.leftRatio || 0.62)
+      setLandRatio(st.leftRatio || 0.62)
+      setPortRatio(st.topRatio || PORTRAIT_RATIO)
       gaze.setSmoothing(st.gaze.smoothing)
       gaze.start(st.gaze.cameraId || undefined)
       startOnboarding()
@@ -33,37 +55,43 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    const move = (e: MouseEvent) => {
+    const move = (e: PointerEvent) => {
       if (!dragging.current) return
-      setRatio(Math.min(0.8, Math.max(0.3, e.clientX / window.innerWidth)))
+      if (portraitRef.current) {
+        const box = document.querySelector('main.split')?.getBoundingClientRect()
+        if (box) setPortRatio(Math.min(0.85, Math.max(0.3, (e.clientY - box.top) / box.height)))
+      } else setLandRatio(Math.min(0.8, Math.max(0.3, e.clientX / window.innerWidth)))
     }
     const up = () => {
       if (!dragging.current) return
       dragging.current = false
       document.body.classList.remove('resizing')
-      setRatio((r) => {
-        updateSettings((x) => ({ ...x, leftRatio: r }))
-        return r
-      })
+      if (portraitRef.current) setPortRatio((r) => (updateSettings((x) => ({ ...x, topRatio: r })), r))
+      else setLandRatio((r) => (updateSettings((x) => ({ ...x, leftRatio: r })), r))
     }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
     return () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
     }
   }, [])
 
   return (
     <div className={`app mode-${ui.mode} side-${ui.side} ${ui.capturing ? 'capturing' : ''}`}>
       <TopBar />
-      <main className="split" style={{ gridTemplateColumns: `${ratio}fr 6px ${1 - ratio}fr` }}>
+      <main
+        className={`split ${portrait ? 'portrait' : ''}`}
+        style={portrait ? { gridTemplateRows: `${ratio}fr 6px ${1 - ratio}fr` } : { gridTemplateColumns: `${ratio}fr 6px ${1 - ratio}fr` }}
+      >
         <div className="left-wrap">
           <LeftPane />
         </div>
         <div
           className="splitter"
-          onMouseDown={() => {
+          onPointerDown={() => {
             dragging.current = true
             document.body.classList.add('resizing')
           }}

@@ -1,9 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   BridgeEvent,
-  JevQuestion,
-  JevResult,
-  JevUsage,
   DisplayInfo,
   TdFrame,
   TdStatus,
@@ -31,7 +28,6 @@ const api = {
   settings: {
     get: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
     save: (s: Settings): Promise<Settings> => ipcRenderer.invoke('settings:save', s),
-    jevPresets: (): Promise<Array<{ name: string; baseUrl: string; model: string }>> => ipcRenderer.invoke('settings:jevPresets'),
     listModels: (p: Provider): Promise<string[]> => ipcRenderer.invoke('settings:listModels', p),
     testProvider: (p: Provider, model: string): Promise<{ ok: boolean; ms: number; text?: string; error?: string }> =>
       ipcRenderer.invoke('settings:testProvider', p, model)
@@ -41,10 +37,6 @@ const api = {
     abort: (reqId: string) => ipcRenderer.send('llm:abort', reqId),
     onDelta: (fn: (d: LlmDelta) => void) => on('llm:delta', fn),
     onDone: (fn: (d: LlmDone) => void) => on('llm:done', fn)
-  },
-  jev: {
-    judge: (state: string, questions: Record<string, JevQuestion>): Promise<JevResult> => ipcRenderer.invoke('jev:judge', state, questions),
-    usage: (): Promise<JevUsage> => ipcRenderer.invoke('jev:usage')
   },
   pty: {
     create: (opts: { cols: number; rows: number; cwd?: string }): Promise<string> => ipcRenderer.invoke('pty:create', opts),
@@ -71,6 +63,8 @@ const api = {
     toggleVisible: () => ipcRenderer.send('win:toggleVisible'),
     capture: (rect: Rect): Promise<string | null> => ipcRenderer.invoke('win:capture', rect),
     focus: () => ipcRenderer.send('win:focus'),
+    /** 屏幕顶部正中的弹窗（Glint Eye 已连接） */
+    island: (text: string, on: boolean) => ipcRenderer.send('win:island', text, on),
     /** Windows：弹窗蒙层出现 / 消失时，右上角系统按钮条跟着变暗 / 变回白 */
     setOverlayDim: (dim: boolean) => ipcRenderer.send('win:overlayDim', dim)
   },

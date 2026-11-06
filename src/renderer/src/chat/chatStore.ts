@@ -6,8 +6,8 @@ import { focus } from '../focus/focus'
 import { snapshot } from '../focus/snapshot'
 import type { FocusContext, Granularity } from '../focus/types'
 import { clip } from '../focus/types'
-import { buildPrompt, bubbleText, FORK_HINT, type Action } from './prompts'
-import { routeQuestion, jevEnabled, candidatesOf, analysisOf, ACTION_NAME } from '../jev/jevBrain'
+import { LOCAL_TRANSLATE_MODEL } from '../../../shared/defaults'
+import { buildPrompt, bubbleText, localTranslatePrompt, FORK_HINT, type Action } from './prompts'
 
 // 右侧对话：一问一答 + 流式输出；每次提问自动带上「你正在看的东西」
 // 右侧模式（右手柄 +）下对回答里某一处提问，不往主对话里塞，而是在下面「裂变」出一个解释窗口，
@@ -25,8 +25,6 @@ export interface ChatMsg {
   status?: 'streaming' | 'done' | 'error'
   error?: string
   reasoning?: string
-  /** Jev 改了答法时，提问气泡下面的一句小字（按「推导」答 · 指第 2 句） */
-  jevNote?: string
   ms?: number
 }
 
@@ -64,6 +62,15 @@ function pickModel(action: Action, hasImage: boolean): ModelRef | null {
   if (hasImage) return s.visionModel
   if (action === 'translate') return s.fastModel
   return s.chatModel
+}
+
+/** 本地翻译模型现在能不能用：Ollama 开着、模型也装了。查不到就算不能用，别让翻译卡住 */
+async function localTranslateReady(): Promise<boolean> {
+  const p = settingsStore.get().s?.providers.find((x) => x.id === 'ollama')
+  if (!p) return false
+  const timeout = new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 1000))
+  const list = await Promise.race([la.settings.listModels(p), timeout]).catch(() => [] as string[])
+  return list.includes(LOCAL_TRANSLATE_MODEL)
 }
 
 /** 历史对话：最近 8 轮，只带文字，图片只保留当前这一条 */
@@ -124,8 +131,6 @@ export interface AskOptions {
   noContext?: boolean
   /** 答案放哪：主对话 / 往下裂变的解释窗口；不传就看视线跟着哪边（右边 = 解释窗口） */
   target?: 'main' | 'fork'
-  /** 答多详细 0~2（Jev 提示「卡住了」时按 A = 2，分步骤拆开讲） */
-  depth?: number
   /** 按这个粒度取焦点上下文（不传就是当前选中的那一格） */
   gran?: Granularity
 }
@@ -186,38 +191,17 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
     if (!ctx.origin) ctx = { ...ctx, origin: originOf(ctx, i >= 0, keep) }
   }
 
-  let act = action
-  let depth: number | undefined = opts.depth
-  let jevNote: string | undefined
-
-  // Jev 模式：自由提问先让 Jev 判断意图、要不要看图、答多深
-  if (act === 'ask' && opts.question && jevEnabled()) {
-    // 视线只到段落级：顺带让 Jev 从候选句里挑出你说的「这个」指哪一句
-    const cands = candidatesOf(ctx)
-    const r = await routeQuestion(opts.question, ctx, cands)
-    if (r) {
-      depth = r.depth
-      if (ctx && r.target !== null && cands[r.target]) ctx = { ...ctx, selection: cands[r.target], gran: 'sentence' }
-      if (r.action && r.action !== 'ask') act = r.action
-      if (r.needsImage && ctx && !ctx.image) {
-        const withImg = await focus.context({ withImage: true })
-        if (withImg?.image) ctx = { ...ctx, image: withImg.image }
-      }
-      const bits = [act !== 'ask' ? `按「${ACTION_NAME[act] ?? act}」答` : '', r.target !== null ? `指第 ${r.target + 1} 句` : '']
-      jevNote = bits.filter(Boolean).join(' · ') || undefined
-    }
-  }
-
-  // Jev 模式下按 A 解释一段 / 一句：按 Jev 看过的难度定详略（很难就分步骤讲，很容易就一小段）
-  if (act === 'explain' && depth === undefined && jevEnabled() && ctx && (ctx.gran === 'paragraph' || ctx.gran === 'sentence')) {
-    const a = analysisOf(ctx.paragraph || ctx.selection || '')
-    if (a) depth = a.difficulty >= 2 ? 2 : a.difficulty < 0.8 ? 1 : undefined
-  }
-
+  const act = action
   const image = ctx?.image
-  const model = pickModel(act, !!image)
+  let model = pickModel(act, !!image)
   if (!model) return
-  const prompt = buildPrompt(act, ctx, opts.question, depth) + (toFork ? FORK_HINT : '')
+  // 本地翻译：只送原文；本地没开、或这段不是文字（扫描页），就这一次改走云端
+  let localPrompt: string | null = null
+  if (act === 'translate' && !image && model.model === LOCAL_TRANSLATE_MODEL) {
+    localPrompt = (await localTranslateReady()) ? localTranslatePrompt(ctx) : null
+    if (!localPrompt) model = { providerId: 'qwen', model: 'qwen3.8-flash' }
+  }
+  const prompt = localPrompt ?? buildPrompt(act, ctx, opts.question) + (toFork ? FORK_HINT : '')
   const userMsg: ChatMsg = {
     id: uid('m'),
     role: 'user',
@@ -225,8 +209,7 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
     prompt,
     ctx,
     image,
-    action: act,
-    jevNote
+    action: act
   }
   const botMsg: ChatMsg = { id: uid('m'), role: 'assistant', text: '', status: 'streaming', model: `${model.model}`, action: act }
   let hist: ChatMessageIn[]
@@ -257,8 +240,8 @@ export async function ask(action: Action, opts: AskOptions = {}): Promise<void> 
   la.llm.start({
     reqId,
     model,
-    system: s.systemPrompt,
-    messages: [...hist, { role: 'user', content }],
+    system: localPrompt ? '' : s.systemPrompt,
+    messages: localPrompt ? [{ role: 'user', content }] : [...hist, { role: 'user', content }],
     temperature: act === 'translate' ? 0.2 : 0.4,
     maxTokens: 2048
   })

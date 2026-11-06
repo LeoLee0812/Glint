@@ -85,7 +85,6 @@ function rebuild(): void {
         { label: '右侧 AI 回答（+）', type: 'radio', checked: s?.side === 'right', click: run({ cmd: 'side', side: 'right' }, false) }
       ]
     },
-    { label: 'Jev 模式', type: 'checkbox', checked: !!s?.jev, enabled: !!s, click: run({ cmd: 'jev' }, false) },
     // 两只手柄「哔哔」响几秒、灯一起闪，放在桌上也响
     { label: '找手柄', enabled: !!s && (s.joyL || s.joyR), click: run({ cmd: 'joy:find' }, false) },
     { type: 'separator' },

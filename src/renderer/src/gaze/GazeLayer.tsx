@@ -7,7 +7,6 @@ import { magnetNow, snapParams } from '../focus/snap'
 import { unionBox } from '../focus/types'
 import { boundsStore, clientToScreen, screenToClient, settingsStore, uiStore } from '../appState'
 import { GazeBlob, type BlobTarget } from './blob'
-import { jevHintStore } from '../jev/jevBrain'
 import { KeyCap } from '../ui/JoyKeys'
 
 // 主窗口里的视线光环 + 焦点高亮
@@ -128,7 +127,6 @@ function createTargetSource(): () => BlobTarget {
 export function GazeLayer(): React.JSX.Element | null {
   const ui = useStore(uiStore)
   const f = useStore(focus.state)
-  const hint = useStore(jevHintStore).hint
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // 光环自己跑 rAF 物理和绘制，不走 React 渲染；颜色跟着视线侧走：左边电光蓝、右边电光红（和两只 Joy-Con 一样）
@@ -169,13 +167,6 @@ export function GazeLayer(): React.JSX.Element | null {
   // 截图时整层先藏起来（截图上会另外画一个干净的蓝圈）
   const hidden = ui.showCalibration || ui.capturing
 
-  // Jev 的小签：只在眼睛还停在它说的那段（软焦点）时画，贴着整段（选的是词 / 句也一样）；上方放得下放上方，放不下放下方
-  const hb =
-    hint && f.mode === 'soft' && f.sel?.space === 'client' && f.paneId === hint.paneId && f.sel.blockKey === hint.blockKey
-      ? (focus.blockBox() ?? unionBox(f.sel.rects))
-      : null
-  const hintTop = hb ? (hb.y - 36 >= 56 ? hb.y - 36 : Math.min(hb.y + hb.height + 8, window.innerHeight - 40)) : 0
-
   return (
     // 光环一直是满色：以前手柄「放下」就淡到 35%，可握在手里不动 3 秒也会被判成放下，读着读着光环就发白了
     <div className="gaze-layer" style={{ display: hidden ? 'none' : undefined }}>
@@ -190,18 +181,6 @@ export function GazeLayer(): React.JSX.Element | null {
       {f.mode === 'hard' && f.sel?.space === 'client' && f.sel.rects[0] && (
         <div className="hl-label" style={{ left: f.sel.rects[0].x - 3, top: Math.max(4, f.sel.rects[0].y - 30) }}>
           {f.label}
-        </div>
-      )}
-      {hb && hint && (
-        <div className={`jev-hint ${hint.kind}`} style={{ left: Math.max(8, hb.x - 3), top: hintTop }}>
-          {hint.kind === 'stuck' ? (
-            <>
-              <KeyCap k="A" lit size="sm" />
-              拆开讲
-            </>
-          ) : (
-            '这句的数字可能不准，核实一下'
-          )}
         </div>
       )}
       <canvas className="gaze-canvas" ref={canvasRef} />

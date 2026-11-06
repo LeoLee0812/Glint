@@ -16,10 +16,9 @@ import {
 import { join, basename, extname, normalize } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { readFileSync, writeFileSync } from 'node:fs'
-import type { LlmRequest, Provider, Settings, JevQuestion, Rect, TrayStatus } from '../shared/types'
-import { loadSettings, saveSettings, JEV_PRESETS } from './settings'
+import type { LlmRequest, Provider, Settings, Rect, TrayStatus } from '../shared/types'
+import { loadSettings, saveSettings } from './settings'
 import { startStream, abortStream, listModels, testProvider } from './llm'
-import { judge, jevUsage, flushJev } from './jev'
 import { startBridge, stopBridge, onBridge, sendBridge } from './bridge'
 import { createPty, writePty, resizePty, killPty, killAllPty } from './pty'
 import { qwenCodeEnv } from './qwenCode'
@@ -29,6 +28,7 @@ import { initTray, setTrayStatus, refreshTray, destroyTray } from './tray'
 import { isMac, isWin } from './platform'
 import { prefetchMonitors } from './displayWin'
 import { asrStart, asrAudio, asrStop } from './asrCloud'
+import { showIsland } from './island'
 
 app.setName('Glint')
 // 改名前叫 LookAsk：用户数据（设置、校准、小人、配对）继续放在老目录，改名不丢数据
@@ -227,7 +227,6 @@ function exitCalibration(): void {
 function registerIpc(): void {
   ipcMain.handle('settings:get', () => loadSettings())
   ipcMain.handle('settings:save', (_e, s: Settings) => saveSettings(s))
-  ipcMain.handle('settings:jevPresets', () => JEV_PRESETS)
   ipcMain.handle('settings:listModels', (_e, p: Provider) => listModels(p))
   ipcMain.handle('settings:testProvider', (_e, p: Provider, model: string) => testProvider(p, model))
 
@@ -235,9 +234,6 @@ function registerIpc(): void {
     startStream(req, (ch, payload) => send(ch, payload))
   })
   ipcMain.on('llm:abort', (_e, reqId: string) => abortStream(reqId))
-
-  ipcMain.handle('jev:judge', (_e, state: string, questions: Record<string, JevQuestion>) => judge(state, questions))
-  ipcMain.handle('jev:usage', () => jevUsage())
 
   ipcMain.handle('pty:create', (_e, opts: { cols: number; rows: number; cwd?: string }) => {
     const s = loadSettings()
@@ -273,6 +269,7 @@ function registerIpc(): void {
     if (win) bringToFront(win)
   })
   // Windows 右上角的系统按钮条不会跟着页面的弹窗蒙层变暗：白底压上 22% 的黑 ≈ #c7c7c7
+  ipcMain.on('win:island', (_e, text: string, on: boolean) => showIsland(text, on, win))
   ipcMain.on('win:overlayDim', (_e, dim: boolean) => {
     if (!isWin || !win || win.isDestroyed()) return
     win.setTitleBarOverlay(dim ? { color: '#c7c7c7', symbolColor: '#3a3a3c' } : { color: '#ffffff', symbolColor: '#1d1d1f' })
@@ -410,7 +407,6 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     destroyTray()
-    flushJev()
     killAllPty()
     stopBridge()
   })

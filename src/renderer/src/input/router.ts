@@ -9,23 +9,9 @@ import { ask, abort, chatStore, popFork } from '../chat/chatStore'
 import { activeDoc, cycleDoc } from '../panes/docs'
 import { terminals, KEYS, type TermHandle } from '../panes/TerminalPane'
 import { la, uiStore, settingsStore, updateSettings, toast, rumble, screenToClient } from '../appState'
-import {
-  onDwell,
-  setSuggestHandler,
-  setTerminalAlertHandler,
-  setFactHandler,
-  jevEnabled,
-  looksLikePermissionPrompt,
-  riskGate,
-  jevHintStore,
-  showJevHint,
-  clearJevHint,
-  termAlertStore,
-  clearTermAlert
-} from '../jev/jevBrain'
+import { looksLikePermissionPrompt } from '../panes/agent'
 import { docsStore } from '../panes/docs'
 import { guideModal } from '../onboarding'
-import { jevMissing } from '../../../shared/jev'
 
 // 按键路由：左手 Joy-Con 管左边（滚动、翻页、终端按键、对终端里的 Qwen Code 说话），
 // 右手 Joy-Con 管右边（微调焦点、解释/翻译/总结、按住问 AI）
@@ -57,21 +43,6 @@ function implicitCalibrate(): void {
   const pred = gaze.recentPrediction(450)
   if (!target || !pred) return
   if (Math.hypot(target.x - pred.x, target.y - pred.y) < 320) gaze.addResidual(target, pred, 0.6)
-}
-
-function toggleJev(): void {
-  const s = settingsStore.get().s
-  if (!s) return
-  const missing = jevMissing(s)
-  if (missing) {
-    toast(missing, 'warn')
-    uiStore.patch({ showSettings: true, settingsTab: 'jev' })
-    return
-  }
-  const on = !s.jevMode
-  updateSettings((x) => ({ ...x, jevMode: on }))
-  toast(on ? 'Jev 开了' : 'Jev 关了', on ? 'jev' : 'info')
-  rumble(on ? 'done' : 'soft', 'R')
 }
 
 // ---------- 语音 ----------
@@ -142,8 +113,6 @@ function onButton(e: ButtonEvent): void {
   // 弹窗里（包括新手引导的前几步）按键只归弹窗，不去解释、翻译
   if (u.showCalibration || u.showSettings || u.showHelp || u.showBooth || guideModal()) return
   const term = activeTerminal()
-  // 左手在终端里有动作 = Qwen Code 的事你已经在处理了，心跳提醒别再跳
-  if (term && e.down && ['Up', 'Down', 'Left', 'Right', 'ZL', 'Minus'].includes(e.btn)) handledTerminal()
 
   if (!e.down) {
     if (e.btn === 'ZR' || e.btn === 'ZL') stopVoice()
@@ -163,22 +132,13 @@ function onButton(e: ButtonEvent): void {
     return
   }
 
-  if (e.long) {
-    if (e.btn === 'Plus') toggleJev()
-    return
-  }
+  if (e.long) return
 
   switch (e.btn) {
     // ----- 右手：对话 -----
     case 'A': {
       implicitCalibrate()
-      // Jev 在这段上提示过「卡住了」、焦点还停在这段：按「拆开讲」详细讲
-      const h = jevHintStore.get().hint
-      const st = focus.state.get()
-      const stuck = h?.kind === 'stuck' && st.mode === 'soft' && st.paneId === h.paneId && st.sel?.blockKey === h.blockKey
-      if (h) clearJevHint()
-      // 卡住说的是整段：不管现在选的是词还是句，都按整段拆开讲
-      ask('explain', stuck ? { depth: 2, gran: 'paragraph' } : {})
+      ask('explain')
       rumble('tick', 'R')
       break
     }
@@ -247,35 +207,11 @@ function onButton(e: ButtonEvent): void {
 
 input.onButton(onButton)
 
-// ---------- 放行终端里的 Qwen Code：Jev 先评风险，危险操作要再按一次 ----------
+// ---------- 放行终端里的 Qwen Code ----------
 
-let pendingApprove = 0
-
-async function approveInTerminal(term: TermHandle): Promise<void> {
-  const screen = term.screenText()
-  if (!jevEnabled() || !looksLikePermissionPrompt(screen)) {
-    term.write(KEYS.enter)
-    rumble('tick', 'L')
-    return
-  }
-  // 5 秒内第二次按 → 用户已经看过警告，直接放行
-  if (Date.now() - pendingApprove < 5000) {
-    pendingApprove = 0
-    term.write(KEYS.enter)
-    rumble('tick', 'L')
-    return
-  }
-  const r = await riskGate(screen)
-  // 安全的直接放行，不留痕迹（判断记录里有一条）；有风险的三连震 + 一句提示，要再按一次
-  if (!r || !r.risky) {
-    term.write(KEYS.enter)
-    rumble('tick', 'L')
-    clearTermAlert()
-    return
-  }
-  pendingApprove = Date.now()
-  haptic('danger', 'L')
-  toast(`有风险：${r.reason}。5 秒内再按一次 → 才放行，按 ← 不放`, 'warn', { ttl: 5000 })
+function approveInTerminal(term: TermHandle): void {
+  term.write(KEYS.enter)
+  rumble('tick', 'L')
 }
 
 // ---------- 摇杆（连续量）+ 眼动翻页 ----------
@@ -363,73 +299,6 @@ function autoScroll(t: number): void {
 }
 
 requestAnimationFrame(tick)
-
-// ---------- Jev 接线 ----------
-
-focus.events.on('dwell', (d) => {
-  if (!jevEnabled()) return
-  const doc = docsStore.get().docs.find((x) => `doc:${x.id}` === d.paneId)
-  onDwell(d, { aiReply: sideOfPane(d.paneId) === 'right' || !!doc?.title.startsWith('AI 回复') })
-})
-
-// Jev 的提醒不进对话区：在眼睛正看着的那段上冒个小签（GazeLayer 画），右手柄轻敲两下
-setFactHandler(({ paneId, blockKey }) => {
-  showJevHint({ kind: 'fact', paneId, blockKey })
-  haptic('jev', 'R')
-})
-
-setSuggestHandler(({ paneId, blockKey }) => {
-  showJevHint({ kind: 'stuck', paneId, blockKey })
-  haptic('jev', 'R')
-})
-
-function lookingAtTerminal(): boolean {
-  return !!focus.state.get().paneId?.startsWith('doc:') && activeDoc()?.kind === 'terminal'
-}
-
-// 终端里的 Qwen Code 等你批准：左手柄「心跳」；没处理就每 10 秒再跳一次，最多再跳 2 次。
-// 左手在终端里按了键、看向终端、或者屏幕上的确认框没了，就不再跳
-let nagTimer: ReturnType<typeof setTimeout> | null = null
-
-function stopNag(): void {
-  if (nagTimer) clearTimeout(nagTimer)
-  nagTimer = null
-}
-
-/** 左手在终端里有动作 = 在处理了：心跳不再跳，标签上的紫点也收掉 */
-function handledTerminal(): void {
-  stopNag()
-  clearTermAlert()
-}
-
-function nag(left: number): void {
-  stopNag()
-  if (left <= 0) return
-  nagTimer = setTimeout(() => {
-    nagTimer = null
-    const waiting = [...terminals.values()].some((t) => looksLikePermissionPrompt(t.screenText()))
-    if (!waiting || lookingAtTerminal()) return
-    haptic('heartbeat', 'L')
-    nag(left - 1)
-  }, 10000)
-}
-
-// 终端里的编程智能体在等你：不往对话区塞通知，终端标签上挂个紫点；没在看终端时左手柄心跳 + 一句提示
-setTerminalAlertHandler(({ state, agent, docId }) => {
-  if (docId) termAlertStore.set({ docId, state })
-  if (lookingAtTerminal()) return
-  haptic(state === 'stuck' ? 'alert' : 'heartbeat', 'L')
-  if (state === 'waiting_permission') nag(2)
-  toast(
-    state === 'waiting_permission'
-      ? `${agent} 在等你批准，十字键 → 放行`
-      : state === 'stuck'
-        ? `${agent} 好像卡住了，按 ← 打断`
-        : `${agent} 在问你，按住 ZL 直接说`,
-    'jev',
-    { ttl: 6000 }
-  )
-})
 
 // ---------- 右手柄 HOME 灯 = AI 状态灯：在想 / 在出字时呼吸，答完（或停掉）就灭 ----------
 // 屏幕上配一个：从提问到出第一个字这段「思考」时间，<html> 挂 ai-thinking，右侧顶上那道线变成 Joy-Con 电光紫、跟着呼吸

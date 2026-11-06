@@ -37,7 +37,7 @@ export function looksLikePermissionPrompt(screen: string): boolean {
 }
 
 /**
- * 去掉底栏的审批模式行（Qwen Code「⏸ 请求授权 (Shift + Tab 切换)」「⏸ Ask permissions (shift + tab to cycle)」）再给 Jev 看：模式名读起来像「在请求批准」，实测空闲时也会被判成等你批准
+ * 去掉底栏的审批模式行（Qwen Code「⏸ 请求授权 (Shift + Tab 切换)」「⏸ Ask permissions (shift + tab to cycle)」）：模式名读起来像「在请求批准」
  */
 export function withoutModeLine(screen: string): string {
   return screen
@@ -46,7 +46,7 @@ export function withoutModeLine(screen: string): string {
     .join('\n')
 }
 
-/** 本地粗筛：像编程智能体或者交互确认，才值得花 Jev 的钱判断状态 */
+/** 本地粗筛：像编程智能体或者交互确认，才算是智能体界面 */
 export function looksLikeAgent(tail: string): boolean {
   return !!terminalAgent(tail) || PERMISSION.test(tail) || /╭|[❯›]\s*\d\.|要不要|是否/.test(tail)
 }

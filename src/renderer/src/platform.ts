@@ -4,6 +4,9 @@ import type { GazeSourceKind } from '../../shared/types'
 
 export const isMac = window.lookask.platform === 'darwin'
 
+/** 平板版（Android WebView）：没有终端、没有菜单栏，竖屏时上下分屏 */
+export const isAndroid = (window.lookask.platform as string) === 'android'
+
 /** 键盘快捷键的修饰键 */
 export const MOD = isMac ? '⌥' : 'Alt'
 
@@ -20,7 +23,7 @@ export const TALK_CODE = isMac ? 'Space' : 'KeyV'
 export const TALK_KEY = isMac ? '空格' : 'V'
 
 /** 眼动输入源里的摄像头叫什么 */
-export const CAM_NAME = isMac ? 'Mac 摄像头' : '摄像头'
+export const CAM_NAME = isMac ? 'Mac 摄像头' : isAndroid ? '平板摄像头' : '摄像头'
 
 /** 眼动输入源的名字（设置、提示、菜单栏共用） */
 export function sourceName(kind: GazeSourceKind): string {
