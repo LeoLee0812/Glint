@@ -12,7 +12,7 @@
 [![Joy-Con](https://img.shields.io/badge/Joy--Con-左右双手柄-E60012?style=flat-square)](#按键)
 [![iPhone](https://img.shields.io/badge/iPhone-原深感眼动-000000?style=flat-square&logo=apple&logoColor=white)](#功能)
 
-**[下载 v0.1.1](https://github.com/LeoLee0812/Glint/releases/tag/v0.1.1)**：Mac `Glint-0.1.1-arm64.dmg` · Windows `Glint-Setup-0.1.1-x64.exe`
+**[下载 v0.1.3](https://github.com/LeoLee0812/Glint/releases/tag/v0.1.3)**：Windows `Glint-Setup-0.1.3-x64.exe` · 安卓平板 `Glint-0.1.3-android.apk` · Mac 用 [v0.1.2](https://github.com/LeoLee0812/Glint/releases/tag/v0.1.2) 的 `Glint-0.1.2-arm64.dmg`
 
 </div>
 
